@@ -1,0 +1,240 @@
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
+
+export function runGit(
+  args: string[],
+  cwd: string
+): { exit: number; stdout: string; stderr: string } {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 })
+  return {
+    exit: r.status ?? 1,
+    stdout: r.stdout ?? '',
+    stderr: r.stderr ?? (r.error ? r.error.message : '')
+  }
+}
+
+export function isGitRepo(path: string): boolean {
+  return runGit(['rev-parse', '--is-inside-work-tree'], path).stdout.trim() === 'true'
+}
+
+export function currentBranch(path: string): string | null {
+  const r = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], path)
+  return r.exit === 0 ? r.stdout.trim() : null
+}
+
+// ── worktrees ────────────────────────────────────────────────────────
+
+const WORKTREE_ROOT = join(homedir(), '.harnext-desktop', 'worktrees')
+
+export function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .split('-')
+      .slice(0, 4)
+      .join('-') || 'task'
+  )
+}
+
+export interface WorktreeInfo {
+  path: string
+  branch: string
+}
+
+/**
+ * Create an isolated worktree for an agent: branch `agent/<slug>-<suffix>`
+ * based on the project's current HEAD, checked out under
+ * ~/.harnext-desktop/worktrees/. The user's working copy is never touched.
+ */
+export function createWorktree(projectPath: string, title: string, agentId: string): WorktreeInfo {
+  const suffix = agentId.slice(0, 6)
+  const branch = `agent/${slugify(title)}-${suffix}`
+  const path = join(WORKTREE_ROOT, `${slugify(title)}-${suffix}`)
+  mkdirSync(WORKTREE_ROOT, { recursive: true })
+  const r = runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], projectPath)
+  if (r.exit !== 0) {
+    throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)
+  }
+  return { path, branch }
+}
+
+export function removeWorktree(
+  projectPath: string,
+  worktreePath: string,
+  branch: string | null
+): void {
+  runGit(['worktree', 'remove', '--force', worktreePath], projectPath)
+  try {
+    rmSync(worktreePath, { recursive: true, force: true })
+  } catch {
+    /* best effort */
+  }
+  if (branch) runGit(['branch', '-D', branch], projectPath)
+  runGit(['worktree', 'prune'], projectPath)
+}
+
+/**
+ * Commit everything in the worktree and merge its branch into the project's
+ * checked-out branch. Throws with git's stderr when the merge fails.
+ */
+export function mergeWorktree(
+  projectPath: string,
+  worktreePath: string,
+  branch: string,
+  title: string
+): void {
+  runGit(['add', '-A'], worktreePath)
+  const status = runGit(['status', '--porcelain'], worktreePath)
+  if (status.stdout.trim().length > 0) {
+    const commit = runGit(
+      ['-c', 'user.name=harnext', '-c', 'user.email=agent@harnext.local', 'commit', '-m', title],
+      worktreePath
+    )
+    if (commit.exit !== 0) {
+      throw new Error(`commit failed: ${commit.stderr.trim() || commit.stdout.trim()}`)
+    }
+  }
+  const merge = runGit(['merge', '--no-ff', '-m', `agent: ${title}`, branch], projectPath)
+  if (merge.exit !== 0) {
+    runGit(['merge', '--abort'], projectPath)
+    throw new Error(`merge failed: ${merge.stderr.trim() || merge.stdout.trim()}`)
+  }
+}
+
+// ── diff parsing ─────────────────────────────────────────────────────
+
+/**
+ * Full worktree diff vs HEAD, untracked files included (via intent-to-add,
+ * which `git diff` then sees without actually staging content).
+ */
+export function worktreeDiff(worktreePath: string): WorktreeDiff {
+  runGit(['add', '-N', '-A'], worktreePath)
+  const r = runGit(['diff', 'HEAD'], worktreePath)
+  if (r.exit !== 0 && !r.stdout) return { files: [], add: 0, del: 0 }
+  return parseUnifiedDiff(r.stdout)
+}
+
+export function parseUnifiedDiff(text: string): WorktreeDiff {
+  const files: DiffFile[] = []
+  let file: DiffFile | null = null
+  let hunk: DiffHunk | null = null
+  let oldNo = 0
+  let newNo = 0
+
+  const pushFile = (): void => {
+    if (file) files.push(file)
+    file = null
+    hunk = null
+  }
+
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      pushFile()
+      // diff --git a/path b/path — take the b-side path
+      const m = line.match(/ b\/(.+)$/)
+      file = { path: m ? m[1] : line.slice(11), badge: 'mod', add: 0, del: 0, hunks: [] }
+      continue
+    }
+    if (!file) continue
+    if (line.startsWith('new file mode')) {
+      file.badge = 'new'
+      continue
+    }
+    if (line.startsWith('deleted file mode')) {
+      file.badge = 'del'
+      continue
+    }
+    if (line.startsWith('@@')) {
+      const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      oldNo = m ? parseInt(m[1], 10) : 1
+      newNo = m ? parseInt(m[2], 10) : 1
+      hunk = { label: line.match(/^(@@[^@]*@@)/)?.[1] ?? line, lines: [] }
+      file.hunks.push(hunk)
+      continue
+    }
+    if (!hunk) continue
+    if (line.startsWith('+')) {
+      hunk.lines.push({ t: 'add', o: null, n: newNo++, c: line.slice(1) })
+      file.add++
+    } else if (line.startsWith('-')) {
+      hunk.lines.push({ t: 'del', o: oldNo++, n: null, c: line.slice(1) })
+      file.del++
+    } else if (line.startsWith(' ') || line === '') {
+      hunk.lines.push({ t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) })
+    }
+    // '\ No newline at end of file' and headers (---/+++) are skipped
+  }
+  pushFile()
+
+  const add = files.reduce((s, f) => s + f.add, 0)
+  const del = files.reduce((s, f) => s + f.del, 0)
+  return { files, add, del }
+}
+
+/** Build the same DiffFile shape from stored snapshot patches (non-git projects). */
+export function diffFromSnapshots(
+  changes: {
+    path: string
+    diff: string
+    additions: number
+    deletions: number
+    before_content: string | null
+  }[]
+): WorktreeDiff {
+  // Latest change per file wins for the badge; hunks accumulate chronologically.
+  const byFile = new Map<string, DiffFile>()
+  for (const c of changes) {
+    const parsed = parsePatchHunks(c.diff)
+    let f = byFile.get(c.path)
+    if (!f) {
+      f = {
+        path: c.path,
+        badge: c.before_content === null ? 'new' : 'mod',
+        add: 0,
+        del: 0,
+        hunks: []
+      }
+      byFile.set(c.path, f)
+    }
+    f.add += c.additions
+    f.del += c.deletions
+    f.hunks.push(...parsed)
+  }
+  const files = [...byFile.values()]
+  return {
+    files,
+    add: files.reduce((s, f) => s + f.add, 0),
+    del: files.reduce((s, f) => s + f.del, 0)
+  }
+}
+
+function parsePatchHunks(patch: string): DiffHunk[] {
+  const hunks: DiffHunk[] = []
+  let hunk: DiffHunk | null = null
+  let oldNo = 0
+  let newNo = 0
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) {
+      const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      oldNo = m ? parseInt(m[1], 10) : 1
+      newNo = m ? parseInt(m[2], 10) : 1
+      hunk = { label: line.match(/^(@@[^@]*@@)/)?.[1] ?? line, lines: [] }
+      hunks.push(hunk)
+      continue
+    }
+    if (!hunk) continue
+    if (line.startsWith('+++') || line.startsWith('---')) continue
+    let l: DiffLine | null = null
+    if (line.startsWith('+')) l = { t: 'add', o: null, n: newNo++, c: line.slice(1) }
+    else if (line.startsWith('-')) l = { t: 'del', o: oldNo++, n: null, c: line.slice(1) }
+    else if (line.startsWith(' ') || line === '')
+      l = { t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) }
+    if (l) hunk.lines.push(l)
+  }
+  return hunks
+}
