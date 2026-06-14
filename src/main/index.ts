@@ -31,7 +31,9 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
-      sandbox: false
+      sandbox: false,
+      // Allow the "agent finished" cue to play without a prior user gesture.
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
 

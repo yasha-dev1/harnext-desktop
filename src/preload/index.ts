@@ -14,6 +14,8 @@ const api: DesktopApi = {
     close: () => ipcRenderer.send('win:close')
   },
   pickDirectory: () => ipcRenderer.invoke('dialog:pickDirectory'),
+  pickAudioFile: () => ipcRenderer.invoke('dialog:pickAudioFile'),
+  readSound: (path: string) => ipcRenderer.invoke('sounds:read', path),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:set', patch)

@@ -210,6 +210,9 @@ const SETTINGS_DEFAULTS: AppSettings = {
   mode: 'acceptEdits',
   editor: 'VS Code',
   openOnDone: false,
+  soundOnDone: true,
+  doneSound: 'chime',
+  customSoundPath: '',
   evalLoop: true
 }
 

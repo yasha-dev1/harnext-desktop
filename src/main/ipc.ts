@@ -1,4 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { readFileSync } from 'node:fs'
+import { extname } from 'node:path'
 import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
 import type { AppSettings, LoopInput, StartAgentInput } from '../shared/types'
 import { AgentManager } from './agents/agent-manager'
@@ -29,6 +31,37 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       properties: ['openDirectory', 'createDirectory']
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:pickAudioFile', async () => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'] }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('sounds:read', (_e, p: string) => {
+    try {
+      const ext = extname(p).slice(1).toLowerCase()
+      const mime =
+        ext === 'mp3'
+          ? 'audio/mpeg'
+          : ext === 'wav'
+            ? 'audio/wav'
+            : ext === 'ogg' || ext === 'oga'
+              ? 'audio/ogg'
+              : ext === 'm4a' || ext === 'aac'
+                ? 'audio/mp4'
+                : ext === 'flac'
+                  ? 'audio/flac'
+                  : 'application/octet-stream'
+      return `data:${mime};base64,${readFileSync(p).toString('base64')}`
+    } catch {
+      return null
+    }
   })
 
   // settings
