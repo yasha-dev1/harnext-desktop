@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import type { LoopRun } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { shortModel, timeAgo, timeUntil } from '../lib/ui'
+import { useNow } from '../lib/useNow'
 import { Icon } from '../components/icons'
 
 function LoopRunRow({ run, onOpen }: { run: LoopRun; onOpen?: () => void }): JSX.Element {
@@ -42,6 +43,8 @@ export default function LoopDetail(): JSX.Element {
   const removeLoop = useAppStore((s) => s.removeLoop)
   const runLoopNow = useAppStore((s) => s.runLoopNow)
   const loopsLoaded = useAppStore((s) => s.loopsByProject[projectId] !== undefined)
+  // Tick so "next in …" and the "X ago" labels refresh on their own.
+  useNow()
 
   useEffect(() => {
     if (Number.isFinite(loopId)) void loadLoopRuns(loopId)
