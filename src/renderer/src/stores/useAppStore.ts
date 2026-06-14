@@ -12,6 +12,7 @@ import type {
   TimelineItem,
   WorktreeDiff
 } from '@shared/types'
+import { playSound } from '../lib/sounds'
 
 function mergeTimeline(fromDb: TimelineItem[], live: TimelineItem[]): TimelineItem[] {
   const seen = new Set(fromDb.map((t) => `${t.kind}:${t.seq}`))
@@ -110,6 +111,12 @@ export const useAppStore = create<AppStore>((set, get) => {
       case 'status': {
         const agent = state.agents[push.agentId]
         if (!agent) break
+        // The agent just handed control back — play the "done" cue once.
+        const justFinished =
+          (push.status === 'review' || push.status === 'input') && agent.status !== push.status
+        if (justFinished && state.settings?.soundOnDone) {
+          playSound(state.settings.doneSound)
+        }
         set({
           agents: {
             ...state.agents,

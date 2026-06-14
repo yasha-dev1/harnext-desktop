@@ -149,6 +149,8 @@ export interface AppSettings {
   mode: PermissionMode
   editor: string
   openOnDone: boolean
+  soundOnDone: boolean
+  doneSound: string
   evalLoop: boolean
 }
 
