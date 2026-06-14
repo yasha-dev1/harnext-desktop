@@ -77,7 +77,7 @@ const MODE_LABEL: Record<PermissionMode, string> = {
   bypassPermissions: 'Full access'
 }
 
-const GOAL_BLOG_URL = 'https://harnext.dev/blog/goal-mode'
+const GOAL_BLOG_URL = 'https://www.harnext.dev/blog/goal-mode-evaluator-loop'
 
 function ModelsTab({
   settings,
