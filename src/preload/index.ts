@@ -44,6 +44,7 @@ const api: DesktopApi = {
     timeline: (agentId: string) => ipcRenderer.invoke('agents:timeline', agentId),
     diff: (agentId: string) => ipcRenderer.invoke('agents:diff', agentId),
     merge: (agentId: string) => ipcRenderer.invoke('agents:merge', agentId),
+    suggestPR: (agentId: string) => ipcRenderer.invoke('agents:suggestPR', agentId),
     openPR: (agentId: string, opts: { base?: string; title?: string; body?: string }) =>
       ipcRenderer.invoke('agents:openPR', agentId, opts),
     discard: (agentId: string) => ipcRenderer.invoke('agents:discard', agentId),

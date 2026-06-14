@@ -78,6 +78,7 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   ipcMain.handle('agents:timeline', (_e, agentId: string) => db.getTimeline(agentId))
   ipcMain.handle('agents:diff', (_e, agentId: string) => manager.getDiff(agentId))
   ipcMain.handle('agents:merge', (_e, agentId: string) => manager.merge(agentId))
+  ipcMain.handle('agents:suggestPR', (_e, agentId: string) => manager.suggestPullRequest(agentId))
   ipcMain.handle(
     'agents:openPR',
     (_e, agentId: string, opts: { base?: string; title?: string; body?: string }) =>

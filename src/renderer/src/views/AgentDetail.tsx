@@ -353,6 +353,29 @@ function OpenPRPanel({
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const generatedRef = useRef(false)
+
+  // Open the dialog and, on first open, ask the model for a PR title + body
+  // (and the repo's default base) the same way the worktree name is generated,
+  // so the fields aren't blank. Best-effort: defaults stay on failure.
+  const openModal = (): void => {
+    setOpen(true)
+    if (generatedRef.current) return
+    generatedRef.current = true
+    setGenerating(true)
+    void window.api.agents
+      .suggestPR(agent.id)
+      .then((s) => {
+        setTitle(s.title)
+        setBase(s.base)
+        setBody(s.body)
+      })
+      .catch(() => {
+        /* keep defaults — the user can fill them in manually */
+      })
+      .finally(() => setGenerating(false))
+  }
 
   const submit = async (): Promise<void> => {
     setBusy(true)
@@ -382,7 +405,7 @@ function OpenPRPanel({
 
   return (
     <>
-      <button className="btn" onClick={() => setOpen(true)}>
+      <button className="btn" onClick={openModal}>
         <Icon.branch size={14} />
         Push &amp; open PR
       </button>
@@ -397,21 +420,36 @@ function OpenPRPanel({
               Pushes <code>{agent.branch}</code> to <code>origin</code> and opens a PR via the
               GitHub CLI.
             </p>
+            {generating && (
+              <p className="modal-desc" style={{ color: 'var(--p-text)' }}>
+                <Icon.spark size={12} /> Generating title &amp; description…
+              </p>
+            )}
             <label className="modal-field">
               <span>Title</span>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input
+                value={title}
+                disabled={generating || busy}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </label>
             <label className="modal-field">
               <span>Base branch</span>
               <input
                 value={base}
+                disabled={generating || busy}
                 placeholder="repository default branch"
                 onChange={(e) => setBase(e.target.value)}
               />
             </label>
             <label className="modal-field">
               <span>Description</span>
-              <textarea value={body} rows={4} onChange={(e) => setBody(e.target.value)} />
+              <textarea
+                value={body}
+                rows={4}
+                disabled={generating || busy}
+                onChange={(e) => setBody(e.target.value)}
+              />
             </label>
             <div className="modal-actions">
               <button className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
@@ -419,7 +457,7 @@ function OpenPRPanel({
               </button>
               <button
                 className="btn ok"
-                disabled={busy || !title.trim()}
+                disabled={busy || generating || !title.trim()}
                 onClick={() => void submit()}
               >
                 <Icon.branch size={14} />

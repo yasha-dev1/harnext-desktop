@@ -255,6 +255,7 @@ export interface DesktopApi {
     timeline(agentId: string): Promise<TimelineItem[]>
     diff(agentId: string): Promise<WorktreeDiff>
     merge(agentId: string): Promise<void>
+    suggestPR(agentId: string): Promise<{ title: string; base: string; body: string }>
     openPR(agentId: string, opts: { base?: string; title?: string; body?: string }): Promise<string>
     discard(agentId: string): Promise<void>
     openEditor(agentId: string): Promise<void>
