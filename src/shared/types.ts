@@ -102,6 +102,10 @@ export interface LoopConfig {
   time?: string
   /** 0 = Monday … 6 = Sunday, for weekly loops */
   day?: number
+  /** Model this loop pins, independent of the global default. Unset = follow default. */
+  model?: string
+  /** Provider this loop pins. Unset = follow the global default provider. */
+  provider?: string
 }
 
 export interface LoopMeta {
@@ -196,6 +200,7 @@ export interface StartAgentInput {
   smart?: string
   executor?: string
   permissionMode?: PermissionMode
+  provider?: string
 }
 
 export interface LoopInput {

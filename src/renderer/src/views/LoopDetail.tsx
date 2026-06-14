@@ -173,7 +173,8 @@ export default function LoopDetail(): JSX.Element {
               <div className="set-rc">
                 <span className="tag">
                   <Icon.cube size={13} />
-                  {shortModel(settings?.model ?? null)}
+                  {shortModel(loop.config.model ?? settings?.model ?? null)}
+                  {!loop.config.model && <span className="hint"> · default</span>}
                 </span>
               </div>
             </div>
