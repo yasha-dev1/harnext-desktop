@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
@@ -46,15 +46,24 @@ export interface WorktreeInfo {
   branch: string
 }
 
+function branchExists(projectPath: string, branch: string): boolean {
+  return runGit(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], projectPath).exit === 0
+}
+
 /**
- * Create an isolated worktree for an agent: branch `agent/<slug>-<suffix>`
- * based on the project's current HEAD, checked out under
- * ~/.harnext-desktop/worktrees/. The user's working copy is never touched.
+ * Create an isolated worktree for an agent under ~/.harnext-desktop/worktrees/,
+ * based on the project's current HEAD. The user's working copy is never
+ * touched. `name` is the desired branch name (e.g. one suggested by the model);
+ * it's slugified to `agent/<slug>` and only disambiguated with a short id
+ * suffix when that branch or worktree dir already exists.
  */
-export function createWorktree(projectPath: string, title: string, agentId: string): WorktreeInfo {
-  const suffix = agentId.slice(0, 6)
-  const branch = `agent/${slugify(title)}-${suffix}`
-  const path = join(WORKTREE_ROOT, `${slugify(title)}-${suffix}`)
+export function createWorktree(projectPath: string, name: string, agentId: string): WorktreeInfo {
+  const base = slugify(name)
+  const collides = (slug: string): boolean =>
+    existsSync(join(WORKTREE_ROOT, slug)) || branchExists(projectPath, `agent/${slug}`)
+  const slug = collides(base) ? `${base}-${agentId.slice(0, 6)}` : base
+  const branch = `agent/${slug}`
+  const path = join(WORKTREE_ROOT, slug)
   mkdirSync(WORKTREE_ROOT, { recursive: true })
   const r = runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], projectPath)
   if (r.exit !== 0) {
