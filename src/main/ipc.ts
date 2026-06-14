@@ -120,7 +120,9 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     if (!meta) throw new Error('Agent not found')
     const project = db.getProject(meta.projectId)
     const settings = db.getSettings()
-    await openInEditor(settings.editor, meta.worktreePath ?? project?.path ?? '.')
+    const target = meta.worktreePath ?? project?.path
+    if (!target) throw new Error('No worktree or project path to open.')
+    await openInEditor(settings.editor, target)
   })
   ipcMain.handle('agents:stopAll', () => manager.stopAll())
 

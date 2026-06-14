@@ -164,10 +164,12 @@ export function parseUnifiedDiff(text: string): WorktreeDiff {
     } else if (line.startsWith('-')) {
       hunk.lines.push({ t: 'del', o: oldNo++, n: null, c: line.slice(1) })
       file.del++
-    } else if (line.startsWith(' ') || line === '') {
+    } else if (line.startsWith(' ')) {
       hunk.lines.push({ t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) })
     }
-    // '\ No newline at end of file' and headers (---/+++) are skipped
+    // Empty tokens (trailing newline from split), '\ No newline at end of
+    // file', and headers (---/+++) are skipped — git prefixes real context
+    // lines (even blank ones) with a leading space.
   }
   pushFile()
 
@@ -232,8 +234,7 @@ function parsePatchHunks(patch: string): DiffHunk[] {
     let l: DiffLine | null = null
     if (line.startsWith('+')) l = { t: 'add', o: null, n: newNo++, c: line.slice(1) }
     else if (line.startsWith('-')) l = { t: 'del', o: oldNo++, n: null, c: line.slice(1) }
-    else if (line.startsWith(' ') || line === '')
-      l = { t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) }
+    else if (line.startsWith(' ')) l = { t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) }
     if (l) hunk.lines.push(l)
   }
   return hunks

@@ -30,10 +30,14 @@ function AgentCard({
         <span className="agent-title">{agent.title}</span>
       </div>
       <div className="agent-meta">
-        <span className="agent-branch">
-          <Icon.branch size={12} />
-          {(agent.branch ?? agent.progress).replace('agent/', '')}
-        </span>
+        {agent.branch ? (
+          <span className="agent-branch">
+            <Icon.branch size={12} />
+            {agent.branch.replace('agent/', '')}
+          </span>
+        ) : (
+          <span className="agent-branch">{agent.progress}</span>
+        )}
         {(agent.add > 0 || agent.del > 0) && (
           <span className="agent-diffstat">
             <span className="add">+{agent.add}</span>
