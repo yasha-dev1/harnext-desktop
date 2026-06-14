@@ -680,6 +680,15 @@ export function markLoopFired(id: number, nextRunAt: number | null): void {
   )
 }
 
+/**
+ * Record that a loop ran without touching its schedule. Used by manual
+ * "Run now" triggers: unlike markLoopFired, this leaves next_run_at intact so a
+ * one-off manual run does not skip/delay the next automatic run.
+ */
+export function markLoopRan(id: number): void {
+  db.prepare('UPDATE loops SET last_run_at = ?, runs = runs + 1 WHERE id = ?').run(Date.now(), id)
+}
+
 export function removeLoop(id: number): void {
   db.prepare('DELETE FROM loops WHERE id = ?').run(id)
 }

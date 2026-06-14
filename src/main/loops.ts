@@ -89,7 +89,7 @@ export class LoopScheduler {
   async runNow(id: number): Promise<void> {
     const loop = db.getLoop(id)
     if (!loop) throw new Error('Loop not found')
-    await this.fire(loop)
+    await this.fire(loop, true)
   }
 
   private tick(): void {
@@ -98,10 +98,16 @@ export class LoopScheduler {
     }
   }
 
-  private async fire(loop: LoopMeta): Promise<void> {
-    const next =
-      loop.status === 'active' ? computeNextRun(loop.type, loop.config, Date.now()) : null
-    db.markLoopFired(loop.id, next)
+  private async fire(loop: LoopMeta, manual = false): Promise<void> {
+    // A scheduled tick advances the schedule; a manual "Run now" must not —
+    // otherwise the next automatic run is skipped/delayed by a full interval.
+    if (manual) {
+      db.markLoopRan(loop.id)
+    } else {
+      const next =
+        loop.status === 'active' ? computeNextRun(loop.type, loop.config, Date.now()) : null
+      db.markLoopFired(loop.id, next)
+    }
     this.notify(loop.projectId)
     try {
       const meta = await this.manager.startAgent(
