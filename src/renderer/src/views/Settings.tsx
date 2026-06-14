@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { JSX, ReactNode } from 'react'
 import type {
@@ -206,13 +206,15 @@ function ProviderSetup({
   active,
   startAtModel,
   onCancel,
-  onActivate
+  onActivate,
+  refresh
 }: {
   provider: ProviderOption
   active: boolean
   startAtModel: boolean
   onCancel: () => void
   onActivate: (model: string) => void
+  refresh: () => void
 }): JSX.Element {
   const local = provider.local
   const providerModels = useAppStore((s) => s.providerModels)
@@ -223,12 +225,46 @@ function ProviderSetup({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ProviderVerifyResult | null>(null)
   const [model, setModel] = useState(provider.defaultModel)
+  // Status of the *saved* credentials (vs `result`, which is the typed key).
+  const [credResult, setCredResult] = useState<ProviderVerifyResult | null>(null)
+  const [credBusy, setCredBusy] = useState(false)
 
   // Pull the full catalog for an already-connected provider (which skips the
   // verify step that would otherwise surface it).
   useEffect(() => {
     if (provider.authenticated) void loadProviderModels(provider.id)
   }, [provider.id, provider.authenticated, loadProviderModels])
+
+  // Re-test the saved key/URL (server falls back to the stored credential).
+  const testStored = useCallback(async (): Promise<void> => {
+    setCredBusy(true)
+    setCredResult(null)
+    const res = await window.api.providers.verify(provider.id, {})
+    setCredResult(res)
+    setCredBusy(false)
+  }, [provider.id])
+
+  // Landing on the model step for a connected provider, surface whether its
+  // stored credential actually works — this is what catches a dead key.
+  useEffect(() => {
+    if (!startAtModel || !provider.authenticated) return
+    let alive = true
+    window.api.providers.verify(provider.id, {}).then((res) => {
+      if (alive) setCredResult(res)
+    })
+    return () => {
+      alive = false
+    }
+  }, [startAtModel, provider.authenticated, provider.id])
+
+  const removeConfig = async (): Promise<void> => {
+    await window.api.providers.remove(provider.id)
+    setCredResult(null)
+    setResult(null)
+    setKey('')
+    refresh()
+    setStep(0)
+  }
 
   // Models offered in step 2: curated favourites first, enriched with the live
   // catalog (cached) and anything the verify probe just returned, deduped.
@@ -388,6 +424,46 @@ function ProviderSetup({
 
         {step === 1 && (
           <div className="wiz-body">
+            {provider.authenticated && (
+              <div className="wiz-cred">
+                <span className="wiz-cred-label">
+                  <Icon.key size={13} />
+                  {local ? `Server: ${provider.baseUrl ?? '—'}` : 'API key on file'}
+                </span>
+                {credBusy ? (
+                  <span className="wiz-cred-status muted">
+                    <Icon.refresh size={12} className="wiz-spin" />
+                    Testing…
+                  </span>
+                ) : credResult ? (
+                  <span className={'wiz-cred-status ' + (credResult.ok ? 'ok' : 'bad')}>
+                    {credResult.ok ? <Icon.check size={12} /> : <Icon.alert size={12} />}
+                    {credResult.ok ? 'Connected' : credResult.message}
+                  </span>
+                ) : null}
+                <span className="wiz-cred-actions">
+                  <button
+                    className="wiz-textbtn"
+                    onClick={() => void testStored()}
+                    disabled={credBusy}
+                  >
+                    Test
+                  </button>
+                  <button
+                    className="wiz-textbtn"
+                    onClick={() => {
+                      setResult(null)
+                      setStep(0)
+                    }}
+                  >
+                    {local ? 'Change URL' : 'Replace key'}
+                  </button>
+                  <button className="wiz-textbtn danger" onClick={() => void removeConfig()}>
+                    Remove
+                  </button>
+                </span>
+              </div>
+            )}
             <p className="wiz-lead">
               Pick the default model harnext codes with on {provider.name}. You can change it
               anytime in the Models tab.
@@ -481,6 +557,7 @@ function ProvidersTab({
           setSetup(null)
           refresh()
         }}
+        refresh={refresh}
       />
     )
   }

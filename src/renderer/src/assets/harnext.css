@@ -2252,6 +2252,68 @@ html[data-density='compact'] .body {
 .wiz-foot .spacer {
   flex: 1;
 }
+.wiz-cred {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+  font-size: 12px;
+}
+.wiz-cred-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--tx-2);
+}
+.wiz-cred-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.wiz-cred-status.ok {
+  color: var(--ok);
+}
+.wiz-cred-status.bad {
+  color: var(--err);
+}
+.wiz-cred-status.muted {
+  color: var(--tx-3);
+}
+.wiz-cred-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wiz-textbtn {
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx-2);
+  transition: 0.13s;
+}
+.wiz-textbtn:hover {
+  background: var(--bg-3);
+  color: var(--tx-1);
+}
+.wiz-textbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.wiz-textbtn.danger {
+  color: var(--err);
+}
+.wiz-textbtn.danger:hover {
+  background: color-mix(in oklab, var(--err), transparent 88%);
+  color: var(--err);
+}
 .wiz-spin {
   animation: wiz-rot 0.8s linear infinite;
 }

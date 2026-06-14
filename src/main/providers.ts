@@ -150,8 +150,12 @@ export async function verifyProvider(
   cred: { key?: string; baseUrl?: string }
 ): Promise<ProviderVerifyResult> {
   // Local server (ollama): a successful tag listing proves it's reachable.
+  // With no URL supplied, fall back to the saved one so a stored config can
+  // be re-tested.
   if (providerId === 'ollama') {
-    const base = normalizeOllamaBaseUrl(cred.baseUrl?.trim() || 'http://localhost:11434')
+    const base = normalizeOllamaBaseUrl(
+      cred.baseUrl?.trim() || getProviderConfig('ollama')?.baseUrl || 'http://localhost:11434'
+    )
     try {
       const models = await listOllamaModels(base)
       if (!models.length) {
@@ -163,7 +167,9 @@ export async function verifyProvider(
     }
   }
 
-  const key = cred.key?.trim()
+  // No typed key → re-test the saved key (or env var), so "Test" on an
+  // already-connected provider verifies the credential actually works.
+  const key = cred.key?.trim() || storedKeyFor(getProviderById(providerId))
   if (!key) return fail('auth', 'Enter an API key to continue.')
 
   try {
