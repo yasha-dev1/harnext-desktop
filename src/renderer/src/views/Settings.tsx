@@ -11,6 +11,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
 import { EditorLogo } from '../components/EditorLogo'
+import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
@@ -681,6 +682,34 @@ function GeneralTab({
           desc="Auto-launch the worktree once an agent is ready for review."
         >
           <Sw on={settings.openOnDone} onChange={(v) => save({ openOnDone: v })} />
+        </Row>
+        <Row
+          label="Play a sound when an agent is ready"
+          desc="An audible cue when an agent finishes and hands back for review."
+        >
+          <Sw on={settings.soundOnDone} onChange={(v) => save({ soundOnDone: v })} />
+        </Row>
+        <Row label="Sound" desc="Which sound plays when an agent finishes.">
+          <span className="ctl-sel">
+            <select
+              value={settings.doneSound}
+              onChange={(e) => save({ doneSound: e.target.value })}
+            >
+              {SOUNDS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </span>
+          <button
+            className="btn ghost"
+            style={{ marginLeft: 8 }}
+            onClick={() => playSound(settings.doneSound)}
+          >
+            <Icon.play size={13} />
+            Preview
+          </button>
         </Row>
       </div>
 
