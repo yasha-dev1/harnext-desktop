@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import { timeAgo, timeUntil } from '../lib/ui'
+import { useNow } from '../lib/useNow'
 import { Icon } from '../components/icons'
 
 export default function LoopsHome(): JSX.Element {
@@ -10,6 +11,8 @@ export default function LoopsHome(): JSX.Element {
   const navigate = useNavigate()
   const project = useAppStore((s) => s.projects.find((p) => p.id === projectId))
   const loops = useAppStore((s) => s.loopsByProject[projectId]) ?? []
+  // Tick so the "next in …" / "X ago" labels below refresh on their own.
+  useNow()
 
   if (!project) return <div />
 
