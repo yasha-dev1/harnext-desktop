@@ -14,7 +14,7 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import StatusPill from '../components/StatusPill'
-import { elapsed, shortModel } from '../lib/ui'
+import { elapsed, onActivate, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
 
 const ROLE_META: Record<Role, { ic: keyof typeof Icon; name: string; icCls: string }> = {
@@ -96,7 +96,10 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
       <div className="msg-body" style={{ paddingTop: 0 }}>
         <div
           className="toolcall"
+          role="button"
+          tabIndex={0}
           onClick={() => setOpen((o) => !o)}
+          onKeyDown={onActivate(() => setOpen((o) => !o))}
           style={{ cursor: 'pointer', marginTop: 0 }}
         >
           <span className="tc-ic">
@@ -261,7 +264,10 @@ const FileBlock = memo(function FileBlock({ file }: { file: DiffFile }): JSX.Ele
     <div className="file-block">
       <div
         className={'file-bar' + (collapsed ? ' collapsed' : '')}
+        role="button"
+        tabIndex={0}
         onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={onActivate(() => setCollapsed((c) => !c))}
       >
         <span className="file-chev">
           <Icon.chevron size={14} />
