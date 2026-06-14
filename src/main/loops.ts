@@ -111,7 +111,13 @@ export class LoopScheduler {
     this.notify(loop.projectId)
     try {
       const meta = await this.manager.startAgent(
-        { projectId: loop.projectId, prompt: loop.prompt },
+        {
+          projectId: loop.projectId,
+          prompt: loop.prompt,
+          // Per-loop overrides; fall back to the global default when unset.
+          model: loop.config.model,
+          provider: loop.config.provider
+        },
         {
           onSettled: (info) => {
             db.updateLoopRunForAgent(

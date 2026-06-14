@@ -176,7 +176,7 @@ export class AgentManager {
     if (!project) throw new Error(`Project ${input.projectId} not found`)
 
     const settings = db.getSettings()
-    const provider = settings.provider
+    const provider = input.provider ?? settings.provider
     const isGoal = /(^|\s)\/goal\b/i.test(input.prompt)
     const cleanPrompt = input.prompt.replace(/(^|\s)\/goal\b/i, ' ').trim() || input.prompt
     const title = cleanPrompt.replace(/\s+/g, ' ').trim().slice(0, 80)

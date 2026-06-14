@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
-import type { LoopConfig, LoopType } from '@shared/types'
+import type { LoopConfig, LoopType, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
+import { shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
 
 const HOURS = ['00:00', '02:00', '06:00', '08:00', '09:00', '12:00', '18:00', '22:00']
@@ -31,6 +32,7 @@ export default function NewLoopForm(): JSX.Element {
   )
   const createLoop = useAppStore((s) => s.createLoop)
   const updateLoop = useAppStore((s) => s.updateLoop)
+  const settings = useAppStore((s) => s.settings)
 
   const [name, setName] = useState(initial?.title ?? '')
   const [prompt, setPrompt] = useState(initial?.prompt ?? '')
@@ -38,20 +40,43 @@ export default function NewLoopForm(): JSX.Element {
   const [config, setConfig] = useState<LoopConfig>({
     intervalHours: initial?.config.intervalHours ?? 6,
     time: initial?.config.time ?? '09:00',
-    day: initial?.config.day ?? 0
+    day: initial?.config.day ?? 0,
+    model: initial?.config.model,
+    provider: initial?.config.provider
   })
   const [enabled, setEnabled] = useState(initial ? initial.status === 'active' : true)
+  const [providers, setProviders] = useState<ProviderOption[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.api.providers.list().then(setProviders)
+  }, [])
 
   if (!project) return <div />
   const valid = name.trim().length > 0 && prompt.trim().length > 0
   const set = (patch: Partial<LoopConfig>): void => setConfig((c) => ({ ...c, ...patch }))
 
+  // Resolve the loop's pinned model/provider, falling back to the global default.
+  const provider = config.provider ?? settings?.provider ?? ''
+  const model = config.model ?? settings?.model ?? ''
+  const selProvider = providers.find((p) => p.id === provider)
+  const authProviders = providers.filter((p) => p.authenticated)
+  const modelBase = selProvider?.models ?? []
+  const modelOptions = model && !modelBase.includes(model) ? [model, ...modelBase] : modelBase
+
   const submit = async (): Promise<void> => {
     if (!valid) return
     setError(null)
     try {
-      const input = { projectId, title: name.trim(), prompt: prompt.trim(), type, config, enabled }
+      // Pin the resolved model/provider so the loop is independent of the global default.
+      const input = {
+        projectId,
+        title: name.trim(),
+        prompt: prompt.trim(),
+        type,
+        config: { ...config, model: model || undefined, provider: provider || undefined },
+        enabled
+      }
       const loop = initial ? await updateLoop(initial.id, input) : await createLoop(input)
       navigate(`/project/${projectId}/loops/${loop.id}`)
     } catch (err) {
@@ -203,6 +228,61 @@ export default function NewLoopForm(): JSX.Element {
               >
                 <span className="sw-knob" />
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="set-card">
+          <div className="set-card-head">
+            <Icon.cube size={15} />
+            <h3>Model</h3>
+            <span className="hint">pinned per loop · independent of the global default</span>
+          </div>
+          <div className="set-row">
+            <div className="set-rl">
+              <div className="set-label">Provider</div>
+              <div className="set-desc">Which connected provider this loop dispatches with.</div>
+            </div>
+            <div className="set-rc">
+              <span className="ctl-sel">
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    const next = providers.find((p) => p.id === e.target.value)
+                    set({ provider: e.target.value, model: next?.defaultModel })
+                  }}
+                >
+                  {authProviders.length === 0 && (
+                    <option value={provider}>{provider || '—'}</option>
+                  )}
+                  {authProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+          </div>
+          <div className="set-row">
+            <div className="set-rl">
+              <div className="set-label">Model</div>
+              <div className="set-desc">
+                Pin a model for this loop — e.g. a cheap one for triage, a stronger one for a weekly
+                refactor.
+              </div>
+            </div>
+            <div className="set-rc">
+              <span className="ctl-sel">
+                <select value={model} onChange={(e) => set({ model: e.target.value })}>
+                  {modelOptions.length === 0 && <option value={model}>{shortModel(model)}</option>}
+                  {modelOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {shortModel(m)}
+                    </option>
+                  ))}
+                </select>
+              </span>
             </div>
           </div>
         </div>
