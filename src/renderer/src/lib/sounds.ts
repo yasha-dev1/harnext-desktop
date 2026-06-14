@@ -59,8 +59,11 @@ export function playSound(id: string, customPath?: string): void {
         .catch(() => {})
       return
     }
-    if (id === 'chime') return tones([659.25, 880])
     if (id === 'ding') return tones([880, 1318.5])
+    // 'chime' and any unknown/removed id (e.g. a persisted 'bruh' from an older
+    // version) fall back to the default chime — removing a sound never silently
+    // disables the cue.
+    return tones([659.25, 880])
   } catch {
     /* audio unavailable in this environment — ignore */
   }

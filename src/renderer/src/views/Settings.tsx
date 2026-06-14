@@ -658,6 +658,9 @@ function GeneralTab({
   save: (p: Partial<AppSettings>) => void
 }): JSX.Element {
   const [stopped, setStopped] = useState(false)
+  // Fall back to the default for a stale/unknown stored id so the controlled
+  // <select> never shows a mismatched option (e.g. a persisted 'bruh').
+  const doneSound = SOUNDS.some((s) => s.id === settings.doneSound) ? settings.doneSound : 'chime'
   return (
     <div className="set-stack">
       <div className="set-card">
@@ -701,7 +704,7 @@ function GeneralTab({
         >
           <span className="ctl-sel">
             <select
-              value={settings.doneSound}
+              value={doneSound}
               onChange={(e) => {
                 const v = e.target.value
                 if (v === 'custom') {
@@ -737,7 +740,7 @@ function GeneralTab({
           <button
             className="btn ghost"
             style={{ marginLeft: 8 }}
-            onClick={() => playSound(settings.doneSound, settings.customSoundPath)}
+            onClick={() => playSound(doneSound, settings.customSoundPath)}
           >
             <Icon.play size={13} />
             Preview
