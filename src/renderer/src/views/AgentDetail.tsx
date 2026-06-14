@@ -340,6 +340,99 @@ function DiffViewer({
 
 // ── actions ──────────────────────────────────────────────────────────
 
+function OpenPRPanel({
+  agent,
+  onError
+}: {
+  agent: AgentMeta
+  onError: (msg: string) => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState(agent.title)
+  const [base, setBase] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
+
+  const submit = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const u = await window.api.agents.openPR(agent.id, {
+        title: title.trim() || undefined,
+        base: base.trim() || undefined,
+        body: body.trim() || undefined
+      })
+      setUrl(u)
+      setOpen(false)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (url) {
+    return (
+      <a className="btn ok" href={url} target="_blank" rel="noreferrer" title={url}>
+        <Icon.external size={14} />
+        PR opened
+      </a>
+    )
+  }
+
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>
+        <Icon.branch size={14} />
+        Push &amp; open PR
+      </button>
+      {open && (
+        <div className="modal-backdrop" onClick={() => !busy && setOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              <Icon.branch size={15} />
+              Open a pull request
+            </div>
+            <p className="modal-desc">
+              Pushes <code>{agent.branch}</code> to <code>origin</code> and opens a PR via the
+              GitHub CLI.
+            </p>
+            <label className="modal-field">
+              <span>Title</span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+            <label className="modal-field">
+              <span>Base branch</span>
+              <input
+                value={base}
+                placeholder="repository default branch"
+                onChange={(e) => setBase(e.target.value)}
+              />
+            </label>
+            <label className="modal-field">
+              <span>Description</span>
+              <textarea value={body} rows={4} onChange={(e) => setBody(e.target.value)} />
+            </label>
+            <div className="modal-actions">
+              <button className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn ok"
+                disabled={busy || !title.trim()}
+                onClick={() => void submit()}
+              >
+                <Icon.branch size={14} />
+                {busy ? 'Pushing…' : 'Push & create PR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function DetailActions({
   agent,
   editor,
@@ -391,6 +484,7 @@ function DetailActions({
             <Icon.trash size={14} />
             Discard
           </button>
+          {agent.branch && <OpenPRPanel agent={agent} onError={onError} />}
           {agent.branch && (
             <button className="btn ok" onClick={merge}>
               <Icon.merge size={14} />
