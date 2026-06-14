@@ -64,6 +64,65 @@ const TEXT_FLUSH_MS = 50
 const DIFF_DEBOUNCE_MS = 900
 const RESULT_PREVIEW_CHARS = 4000
 
+const WORKTREE_NAME_PROMPT =
+  'You name git branches for coding tasks. Reply with ONLY the branch name: ' +
+  '2-4 lowercase words in kebab-case (hyphen-separated). No "agent/" or ' +
+  '"feature/" prefix, no quotes, no punctuation, no explanation. ' +
+  'Examples: add-csv-export, fix-login-redirect, refactor-auth-context.'
+
+const WORKTREE_NAME_TIMEOUT_MS = 15_000
+
+/**
+ * Ask the model for a concise branch name for the task instead of slugifying
+ * the raw prompt. Best-effort: returns null on any error/timeout so worktree
+ * creation can fall back to the prompt-derived slug. Runs a minimal, tool-less
+ * single-turn session so it's cheap and fast.
+ */
+async function generateWorktreeName(
+  provider: string,
+  modelId: string,
+  cwd: string,
+  prompt: string
+): Promise<string | null> {
+  try {
+    const { session } = await createAgentSession({
+      cwd,
+      provider,
+      modelId,
+      systemPrompt: WORKTREE_NAME_PROMPT,
+      tools: [],
+      skills: [],
+      mcpDisabled: true,
+      compaction: false,
+      maxTurns: 1,
+      quiet: true
+    })
+    let out = ''
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === 'message_end' && isAssistant(event.message)) {
+        out = extractText(event.message)
+      }
+    })
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('worktree-name timeout')), WORKTREE_NAME_TIMEOUT_MS)
+    )
+    try {
+      await Promise.race([session.prompt(`Task:\n${prompt.slice(0, 1500)}`), timeout])
+    } finally {
+      unsubscribe()
+      void session.dispose()
+    }
+    const name = out
+      .trim()
+      .split('\n')[0]
+      .replace(/^(agent|feature|feat)\//i, '')
+      .trim()
+    return name || null
+  } catch {
+    return null
+  }
+}
+
 export interface SettleInfo {
   status: AgentStatus
   add: number
@@ -131,9 +190,12 @@ export class AgentManager {
     const agentId = randomUUID()
 
     // Isolated worktree for git projects — the user's checkout is never touched.
+    // Ask the model for a meaningful branch name first; fall back to the
+    // prompt-derived title if it can't (offline, bad key, timeout…).
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
-      worktree = createWorktree(project.path, title, agentId)
+      const suggested = await generateWorktreeName(provider, model, project.path, cleanPrompt)
+      worktree = createWorktree(project.path, suggested ?? title, agentId)
     }
     const cwd = worktree?.path ?? project.path
 
