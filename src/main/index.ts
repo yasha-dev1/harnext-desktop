@@ -32,6 +32,8 @@ function createWindow(): void {
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,
+      // Explorer panel embeds the agent's forwarded dev server via <webview>.
+      webviewTag: true,
       // Allow the "agent finished" cue to play without a prior user gesture.
       autoplayPolicy: 'no-user-gesture-required'
     }

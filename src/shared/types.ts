@@ -17,6 +17,88 @@ export interface Project {
   isGit: boolean
   lastOpenedAt: number
   createdAt: number
+  /** Docker sandbox config, detected on add. null = never analyzed (pre-feature projects). */
+  envConfig: ProjectEnvConfig | null
+}
+
+// ── project environment / docker sandbox ─────────────────────────────
+export type SandboxRuntime = 'compose' | 'none'
+
+export interface ComposeService {
+  name: string
+  /** built from the repo (a `build:` stanza) vs pulled from a registry (`image:` only) */
+  build: boolean
+  image: string | null
+  /** bind-mounts the project root — the other signal that this service runs our code */
+  mountsSource: boolean
+  /** published (host-facing) container ports from `ports:` — forwarding candidates */
+  ports: number[]
+  hasHealthcheck: boolean
+}
+
+export interface ExposedService {
+  service: string
+  containerPort: number
+  /** the service the explorer opens by default */
+  primary: boolean
+}
+
+/** User-specified config that overrides auto-detection and survives re-detect. */
+export interface EnvOverrides {
+  /** Explicit compose file(s), relative to the project root, instead of auto-discovery. */
+  composeFiles?: string[]
+  /** Force which service is the workspace (gets the bind-mount + the agent's shell). */
+  workspaceService?: string
+  /** Force which exposed service the explorer opens by default. */
+  primaryService?: string
+}
+
+export interface ProjectEnvConfig {
+  /** Master switch. false → the project runs exactly as today (host execution, no Docker). */
+  enabled: boolean
+  runtime: SandboxRuntime
+  /** compose files, relative to the project root, in `-f` order */
+  composeFiles: string[]
+  /** sha256 of the compose files at detection time; lets us spot drift on re-open */
+  sourceHash: string | null
+  /** the service the agent edits / execs into — gets the source bind-mount */
+  workspaceService: string | null
+  /** services + ports forwarded to a host port and shown in the explorer */
+  exposed: ExposedService[]
+  /** every detected service, for display */
+  services: ComposeService[]
+  /** dirs inside the workspace container kept in per-worktree volumes (node_modules, .venv, …) */
+  artifactVolumes: string[]
+  /** commands run once, after services are healthy (migrate/seed) */
+  initCommands: string[]
+  /** non-empty when detection couldn't fully resolve the compose config */
+  detectError: string | null
+  detectedAt: number
+  /** user-specified config that overrides detection (compose file, workspace, preview) */
+  overrides?: EnvOverrides
+}
+
+export interface DockerStatus {
+  installed: boolean
+  /** 'v2' = `docker compose`; 'v1' = legacy `docker-compose`; null = neither */
+  composeFlavor: 'v2' | 'v1' | null
+  daemonRunning: boolean
+  version: string | null
+}
+
+export interface SandboxPort {
+  service: string
+  /** Host URL the forwarded service is reachable at, e.g. http://localhost:49210 */
+  url: string
+  /** The one the explorer opens by default. */
+  primary: boolean
+}
+
+/** Live state of an agent's per-worktree Docker sandbox (in-memory; not persisted). */
+export interface SandboxInfo {
+  status: 'off' | 'preparing' | 'ready' | 'failed'
+  primaryUrl: string | null
+  ports: SandboxPort[]
 }
 
 export interface AgentMeta {
@@ -154,6 +236,8 @@ export interface AppSettings {
   /** Absolute path to a user-chosen audio file, used when doneSound === 'custom'. */
   customSoundPath: string
   evalLoop: boolean
+  /** Where per-agent git worktrees are created. Default: ~/.harnext-desktop/worktrees */
+  worktreeRoot: string
 }
 
 export interface ProviderOption {
@@ -199,6 +283,7 @@ export type AgentPush =
   | { agentId: string; type: 'diff'; diff: WorktreeDiff }
   | { agentId: string; type: 'agents-changed'; projectId: number }
   | { agentId: string; type: 'loops-changed'; projectId: number }
+  | { agentId: string; type: 'sandbox'; info: SandboxInfo }
 
 export interface StartAgentInput {
   projectId: number
@@ -228,6 +313,8 @@ export interface DesktopApi {
     close(): void
   }
   pickDirectory(): Promise<string | null>
+  /** Open a URL in the user's default browser. */
+  openExternal(url: string): Promise<void>
   /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
   pickAudioFile(): Promise<string | null>
   /** Read a local audio file as a data URL so the renderer can play it. */
@@ -253,6 +340,14 @@ export interface DesktopApi {
     create(path: string): Promise<Project>
     remove(id: number): Promise<void>
     touch(id: number): Promise<void>
+    /** Probe the host for Docker + Compose availability. */
+    dockerStatus(): Promise<DockerStatus>
+    /** Re-run compose detection for a project, preserving the user's enable choice. */
+    detectEnv(id: number): Promise<Project>
+    /** Patch a project's env config (e.g. toggle the sandbox on/off). */
+    setEnvConfig(id: number, patch: Partial<ProjectEnvConfig>): Promise<Project>
+    /** Set user overrides (compose file / workspace / preview service) and re-detect. */
+    setEnvOverrides(id: number, patch: EnvOverrides): Promise<Project>
   }
   agents: {
     list(projectId: number): Promise<AgentMeta[]>
@@ -268,6 +363,8 @@ export interface DesktopApi {
     discard(agentId: string): Promise<void>
     openEditor(agentId: string): Promise<void>
     stopAll(): Promise<void>
+    /** Current Docker sandbox state for an agent (forwarded ports, status). */
+    sandbox(agentId: string): Promise<SandboxInfo>
   }
   loops: {
     list(projectId: number): Promise<LoopMeta[]>

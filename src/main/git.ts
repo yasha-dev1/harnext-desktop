@@ -113,7 +113,7 @@ export function createPullRequest(
 
 // ── worktrees ────────────────────────────────────────────────────────
 
-const WORKTREE_ROOT = join(homedir(), '.harnext-desktop', 'worktrees')
+export const DEFAULT_WORKTREE_ROOT = join(homedir(), '.harnext-desktop', 'worktrees')
 
 export function slugify(text: string): string {
   return (
@@ -143,14 +143,19 @@ function branchExists(projectPath: string, branch: string): boolean {
  * it's slugified to `agent/<slug>` and only disambiguated with a short id
  * suffix when that branch or worktree dir already exists.
  */
-export function createWorktree(projectPath: string, name: string, agentId: string): WorktreeInfo {
+export function createWorktree(
+  projectPath: string,
+  name: string,
+  agentId: string,
+  root: string = DEFAULT_WORKTREE_ROOT
+): WorktreeInfo {
   const base = slugify(name)
   const collides = (slug: string): boolean =>
-    existsSync(join(WORKTREE_ROOT, slug)) || branchExists(projectPath, `agent/${slug}`)
+    existsSync(join(root, slug)) || branchExists(projectPath, `agent/${slug}`)
   const slug = collides(base) ? `${base}-${agentId.slice(0, 6)}` : base
   const branch = `agent/${slug}`
-  const path = join(WORKTREE_ROOT, slug)
-  mkdirSync(WORKTREE_ROOT, { recursive: true })
+  const path = join(root, slug)
+  mkdirSync(root, { recursive: true })
   const r = runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], projectPath)
   if (r.exit !== 0) {
     throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)

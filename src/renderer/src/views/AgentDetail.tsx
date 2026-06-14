@@ -8,6 +8,7 @@ import type {
   DiffFile,
   MessageItem,
   Role,
+  SandboxInfo,
   TimelineItem,
   ToolCallItem,
   WorktreeDiff
@@ -344,6 +345,112 @@ function DiffViewer({
   )
 }
 
+// ── explorer (live preview of the sandbox dev server) ────────────────
+
+function Explorer({ sandbox }: { sandbox: SandboxInfo }): JSX.Element {
+  const ports = sandbox.ports
+  const [selected, setSelected] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  // Default to the primary service; honour the user's pick once they switch.
+  const url =
+    ports.find((p) => p.service === selected)?.url ?? sandbox.primaryUrl ?? ports[0]?.url ?? null
+
+  if (sandbox.status === 'preparing') {
+    return (
+      <div className="exp-empty">
+        <span className="stream-dots">
+          <i />
+          <i />
+          <i />
+        </span>
+        Starting the environment…
+      </div>
+    )
+  }
+  if (sandbox.status === 'failed') {
+    return (
+      <div className="exp-empty">
+        <Icon.alert size={18} />
+        The sandbox failed to start — see the error above the conversation.
+      </div>
+    )
+  }
+  if (!url) {
+    return (
+      <div className="exp-empty">
+        <Icon.eye size={18} />
+        No forwarded services to preview.
+      </div>
+    )
+  }
+
+  return (
+    <div className="explorer">
+      <div className="exp-bar">
+        {ports.length > 1 && (
+          <span className="exp-svc">
+            {ports.map((p) => (
+              <button
+                key={p.service}
+                className={p.url === url ? 'active' : ''}
+                onClick={() => setSelected(p.service)}
+              >
+                {p.service}
+              </button>
+            ))}
+          </span>
+        )}
+        <span className="exp-url">{url}</span>
+        <button className="exp-iconbtn" title="Reload" onClick={() => setReloadKey((k) => k + 1)}>
+          <Icon.refresh size={14} />
+        </button>
+        <button
+          className="exp-iconbtn"
+          title="Open in browser"
+          onClick={() => void window.api.openExternal(url)}
+        >
+          <Icon.external size={14} />
+        </button>
+      </div>
+      <webview key={`${url}#${reloadKey}`} className="exp-frame" src={url} />
+    </div>
+  )
+}
+
+function RightPane({
+  agent,
+  diff,
+  sandbox
+}: {
+  agent: AgentMeta
+  diff: WorktreeDiff | undefined
+  sandbox: SandboxInfo | undefined
+}): JSX.Element {
+  const [tab, setTab] = useState<'diff' | 'preview'>('diff')
+  // Only surface the Preview tab when this agent actually has a sandbox.
+  if (!sandbox || sandbox.status === 'off') return <DiffViewer agent={agent} diff={diff} />
+  const dotCls =
+    sandbox.status === 'preparing' ? ' preparing' : sandbox.status === 'failed' ? ' failed' : ''
+  return (
+    <div className="rightpane">
+      <div className="rp-tabs">
+        <button className={tab === 'diff' ? 'active' : ''} onClick={() => setTab('diff')}>
+          <Icon.diff size={14} />
+          Diff
+        </button>
+        <button className={tab === 'preview' ? 'active' : ''} onClick={() => setTab('preview')}>
+          <Icon.eye size={14} />
+          Preview
+          <span className={'rp-dot' + dotCls} />
+        </button>
+      </div>
+      <div className="rp-body">
+        {tab === 'diff' ? <DiffViewer agent={agent} diff={diff} /> : <Explorer sandbox={sandbox} />}
+      </div>
+    </div>
+  )
+}
+
 // ── actions ──────────────────────────────────────────────────────────
 
 function OpenPRPanel({
@@ -634,8 +741,10 @@ export default function AgentDetail(): JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const timeline = useAppStore((s) => s.timelines[agentId])
   const diff = useAppStore((s) => s.diffs[agentId])
+  const sandbox = useAppStore((s) => s.sandboxes[agentId])
   const ensureTimeline = useAppStore((s) => s.ensureTimeline)
   const loadDiff = useAppStore((s) => s.loadDiff)
+  const loadSandbox = useAppStore((s) => s.loadSandbox)
   const agentsLoaded = useAppStore((s) => s.agentIdsByProject[projectId] !== undefined)
 
   const [actionError, setActionError] = useState<string | null>(null)
@@ -651,7 +760,8 @@ export default function AgentDetail(): JSX.Element {
   useEffect(() => {
     void ensureTimeline(agentId)
     void loadDiff(agentId)
-  }, [agentId, ensureTimeline, loadDiff])
+    void loadSandbox(agentId)
+  }, [agentId, ensureTimeline, loadDiff, loadSandbox])
 
   const isRunning = agent?.status === 'running'
   useEffect(() => {
@@ -740,7 +850,7 @@ export default function AgentDetail(): JSX.Element {
       </div>
       <div className="detail-cols">
         <Thread agent={agent} timeline={timeline ?? []} />
-        <DiffViewer agent={agent} diff={diff} />
+        <RightPane agent={agent} diff={diff} sandbox={sandbox} />
       </div>
     </div>
   )

@@ -3,11 +3,15 @@ import type {
   AgentMeta,
   AgentPush,
   AppSettings,
+  DockerStatus,
   LoopInput,
   LoopMeta,
   LoopRun,
+  EnvOverrides,
   Project,
+  ProjectEnvConfig,
   Role,
+  SandboxInfo,
   StartAgentInput,
   TimelineItem,
   WorktreeDiff
@@ -30,6 +34,7 @@ interface AppStore {
   timelines: Record<string, TimelineItem[]>
   streaming: Record<string, { role: Role; text: string }>
   diffs: Record<string, WorktreeDiff>
+  sandboxes: Record<string, SandboxInfo>
   loopsByProject: Record<number, LoopMeta[]>
   loopRuns: Record<number, LoopRun[]>
 
@@ -44,6 +49,12 @@ interface AppStore {
   openProjectDialog: () => Promise<Project | null>
   removeProject: (id: number) => Promise<void>
 
+  dockerStatus: DockerStatus | null
+  loadDockerStatus: () => Promise<void>
+  detectProjectEnv: (id: number) => Promise<void>
+  setProjectEnvConfig: (id: number, patch: Partial<ProjectEnvConfig>) => Promise<void>
+  setProjectEnvOverrides: (id: number, patch: EnvOverrides) => Promise<void>
+
   loadAgents: (projectId: number) => Promise<void>
   startAgent: (input: StartAgentInput) => Promise<AgentMeta>
   sendPrompt: (agentId: string, text: string) => Promise<void>
@@ -52,6 +63,7 @@ interface AppStore {
   mergeAgent: (agentId: string) => Promise<void>
   ensureTimeline: (agentId: string) => Promise<void>
   loadDiff: (agentId: string) => Promise<void>
+  loadSandbox: (agentId: string) => Promise<void>
 
   loadLoops: (projectId: number) => Promise<void>
   loadLoopRuns: (loopId: number) => Promise<void>
@@ -139,6 +151,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         })
         break
       }
+      case 'sandbox':
+        set({ sandboxes: { ...state.sandboxes, [push.agentId]: push.info } })
+        break
       case 'agents-changed':
         void get().loadAgents(push.projectId)
         break
@@ -153,11 +168,13 @@ export const useAppStore = create<AppStore>((set, get) => {
     providerModels: {},
     projects: [],
     projectsLoaded: false,
+    dockerStatus: null,
     agents: {},
     agentIdsByProject: {},
     timelines: {},
     streaming: {},
     diffs: {},
+    sandboxes: {},
     loopsByProject: {},
     loopRuns: {},
 
@@ -192,6 +209,26 @@ export const useAppStore = create<AppStore>((set, get) => {
     removeProject: async (id) => {
       await window.api.projects.remove(id)
       await get().loadProjects()
+    },
+
+    loadDockerStatus: async () => {
+      const dockerStatus = await window.api.projects.dockerStatus()
+      set({ dockerStatus })
+    },
+
+    detectProjectEnv: async (id) => {
+      const project = await window.api.projects.detectEnv(id)
+      set((state) => ({ projects: state.projects.map((p) => (p.id === id ? project : p)) }))
+    },
+
+    setProjectEnvConfig: async (id, patch) => {
+      const project = await window.api.projects.setEnvConfig(id, patch)
+      set((state) => ({ projects: state.projects.map((p) => (p.id === id ? project : p)) }))
+    },
+
+    setProjectEnvOverrides: async (id, patch) => {
+      const project = await window.api.projects.setEnvOverrides(id, patch)
+      set((state) => ({ projects: state.projects.map((p) => (p.id === id ? project : p)) }))
     },
 
     loadAgents: async (projectId) => {
@@ -251,6 +288,11 @@ export const useAppStore = create<AppStore>((set, get) => {
     loadDiff: async (agentId) => {
       const diff = await window.api.agents.diff(agentId)
       set((state) => ({ diffs: { ...state.diffs, [agentId]: diff } }))
+    },
+
+    loadSandbox: async (agentId) => {
+      const info = await window.api.agents.sandbox(agentId)
+      set((state) => ({ sandboxes: { ...state.sandboxes, [agentId]: info } }))
     },
 
     loadLoops: async (projectId) => {
