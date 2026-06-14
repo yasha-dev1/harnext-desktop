@@ -151,6 +151,22 @@ export interface ProviderOption {
   defaultModel: string
   models: string[]
   authenticated: boolean
+  /** Local inference server (e.g. ollama) — configured by base URL, no API key. */
+  local: boolean
+  /** Where the user obtains credentials — shown as a "get a key" link in setup. */
+  consoleUrl: string
+  /** Current base URL for local providers, so setup can pre-fill it. */
+  baseUrl: string | null
+}
+
+/** Outcome of probing a provider's API with the supplied credentials. */
+export interface ProviderVerifyResult {
+  ok: boolean
+  /** ok = reachable & authorized; auth = bad key; unreachable = network; error = other. */
+  status: 'ok' | 'auth' | 'unreachable' | 'error'
+  message: string
+  /** Live model ids the credentials can reach, when the provider returns them. */
+  models: string[]
 }
 
 // ── push events ──────────────────────────────────────────────────────
@@ -205,7 +221,15 @@ export interface DesktopApi {
   }
   providers: {
     list(): Promise<ProviderOption[]>
+    /** Full live model catalog for a provider, falling back to curated defaults. */
+    models(provider: string): Promise<string[]>
     saveKey(provider: string, key: string): Promise<void>
+    saveBaseUrl(provider: string, baseUrl: string): Promise<void>
+    verify(
+      provider: string,
+      cred: { key?: string; baseUrl?: string }
+    ): Promise<ProviderVerifyResult>
+    remove(provider: string): Promise<void>
   }
   projects: {
     list(): Promise<Project[]>

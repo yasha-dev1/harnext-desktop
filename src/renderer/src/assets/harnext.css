@@ -1896,6 +1896,55 @@ html[data-density='compact'] .body {
   max-width: 280px;
 }
 
+/* advanced (collapsible) settings section */
+.adv-head {
+  width: 100%;
+  cursor: pointer;
+  transition: background 0.13s;
+}
+.adv-head:not(.open) {
+  border-bottom: none;
+}
+.adv-head:hover {
+  background: var(--bg-2);
+}
+.adv-chev {
+  margin-left: 4px;
+  color: var(--tx-3);
+  transition: transform 0.16s ease;
+}
+.adv-chev.open {
+  transform: rotate(180deg);
+}
+.adv-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--tx-2);
+}
+.adv-note > span {
+  flex: 1;
+  min-width: 220px;
+}
+.adv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+}
+.adv-link:hover {
+  text-decoration: underline;
+}
+
 /* evaluator diagram */
 .evald {
   display: grid;
@@ -1973,7 +2022,7 @@ html[data-density='compact'] .body {
 }
 .prov-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
   gap: 9px;
 }
 .prov {
@@ -1996,24 +2045,28 @@ html[data-density='compact'] .body {
   border-color: var(--p-line);
   background: var(--p-soft);
 }
-.prov-rd {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--line-2);
+.prov-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   flex: none;
   display: grid;
   place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--tx-1);
 }
-.prov.on .prov-rd {
-  border-color: var(--primary);
+.prov.on .prov-logo {
+  border-color: var(--p-line);
+  background: var(--bg-0);
 }
-.prov.on .prov-rd::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
+.wiz-logo {
+  display: flex;
+  flex: none;
+}
+/* keep brand marks neutral in the wizard head (head svgs are otherwise tinted) */
+.set-card-head .wiz-logo svg {
+  color: var(--tx-1);
 }
 .prov-meta {
   min-width: 0;
@@ -2035,6 +2088,261 @@ html[data-density='compact'] .body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.prov-subrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+.prov-subrow .prov-sub {
+  margin-top: 0;
+  flex: 1;
+}
+.prov-subrow .spill {
+  flex: none;
+}
+
+/* ── provider setup wizard ──────────────────────────────────────────── */
+.prov-warn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--err), transparent 55%);
+  background: color-mix(in oklab, var(--err), transparent 90%);
+  color: var(--tx-1);
+}
+.prov-warn svg {
+  color: var(--err);
+  flex: none;
+}
+.prov-warn > div {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.prov-warn .btn {
+  margin-left: auto;
+  flex: none;
+}
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 11.5px;
+}
+.wiz-x {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--tx-3);
+  transition: 0.13s;
+}
+.wiz-x:hover {
+  background: var(--bg-3);
+  color: var(--tx-1);
+}
+.wiz-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.wiz-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx-3);
+}
+.wiz-step:not(:last-child)::after {
+  content: '';
+  width: 26px;
+  height: 1px;
+  background: var(--line-2);
+  margin-left: 8px;
+}
+.wiz-step.active {
+  color: var(--tx-1);
+}
+.wiz-step.done {
+  color: var(--ok);
+}
+.wiz-num {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  border: 1px solid var(--line-2);
+  color: var(--tx-3);
+}
+.wiz-step.active .wiz-num {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.wiz-step.done .wiz-num {
+  border-color: var(--ok);
+  background: color-mix(in oklab, var(--ok), transparent 85%);
+  color: var(--ok);
+}
+.wiz-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.wiz-lead {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--tx-2);
+}
+.wiz-lead code {
+  font-size: 11.5px;
+}
+.wiz-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--primary);
+  width: fit-content;
+}
+.wiz-link:hover {
+  text-decoration: underline;
+}
+.wiz-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.wiz-result svg {
+  flex: none;
+}
+.wiz-result.ok {
+  color: var(--ok);
+  background: color-mix(in oklab, var(--ok), transparent 90%);
+  border: 1px solid color-mix(in oklab, var(--ok), transparent 75%);
+}
+.wiz-result.bad {
+  color: var(--err);
+  background: color-mix(in oklab, var(--err), transparent 90%);
+  border: 1px solid color-mix(in oklab, var(--err), transparent 70%);
+}
+.wiz-result-sub {
+  color: var(--tx-2);
+  font-weight: 400;
+}
+.wiz-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wiz-foot .spacer {
+  flex: 1;
+}
+.wiz-cred {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+  font-size: 12px;
+}
+.wiz-cred-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--tx-2);
+}
+.wiz-cred-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.wiz-cred-status.ok {
+  color: var(--ok);
+}
+.wiz-cred-status.bad {
+  color: var(--err);
+}
+.wiz-cred-status.muted {
+  color: var(--tx-3);
+}
+.wiz-cred-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wiz-textbtn {
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx-2);
+  transition: 0.13s;
+}
+.wiz-textbtn:hover {
+  background: var(--bg-3);
+  color: var(--tx-1);
+}
+.wiz-textbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.wiz-textbtn.danger {
+  color: var(--err);
+}
+.wiz-textbtn.danger:hover {
+  background: color-mix(in oklab, var(--err), transparent 88%);
+  color: var(--err);
+}
+.wiz-spin {
+  animation: wiz-rot 0.8s linear infinite;
+}
+@keyframes wiz-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.wiz-summary {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.wiz-sum-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  font-size: 12.5px;
+}
+.wiz-sum-row:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
+.wiz-sum-k {
+  color: var(--tx-3);
+  font-weight: 600;
+}
+.wiz-sum-v {
+  font-weight: 600;
 }
 
 /* ── onboarding ─────────────────────────────────────────────────────── */

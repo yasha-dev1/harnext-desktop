@@ -45,6 +45,9 @@ export default function Compose(): JSX.Element {
   const saveSettings = useAppStore((s) => s.saveSettings)
   const startAgent = useAppStore((s) => s.startAgent)
 
+  const providerModels = useAppStore((s) => s.providerModels)
+  const loadProviderModels = useAppStore((s) => s.loadProviderModels)
+
   const [text, setText] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,9 +59,15 @@ export default function Compose(): JSX.Element {
     taRef.current?.focus()
   }, [])
 
+  const provider = settings?.provider
+  useEffect(() => {
+    if (provider) void loadProviderModels(provider)
+  }, [provider, loadProviderModels])
+
   if (!project || !settings) return <div />
 
-  const models = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
+  const curated = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
+  const models = providerModels[settings.provider] ?? curated
   const isGoal = /(^|\s)\/goal\b/i.test(text)
 
   const start = async (): Promise<void> => {

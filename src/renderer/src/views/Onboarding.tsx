@@ -5,6 +5,7 @@ import type { Project, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import ProjectPicker from '../components/ProjectPicker'
 import { Icon, Logo } from '../components/icons'
+import { ProviderLogo } from '../components/ProviderLogo'
 
 function Stepper({ step, total }: { step: number; total: number }): JSX.Element {
   return (
@@ -192,7 +193,9 @@ function ProviderStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
               className={'prov' + (settings?.provider === p.id ? ' on' : '')}
               onClick={() => selectProvider(p)}
             >
-              <span className="prov-rd" />
+              <span className="prov-logo">
+                <ProviderLogo id={p.id} size={20} />
+              </span>
               <span className="prov-meta">
                 <span className="prov-nm">{p.name}</span>
                 <span className="prov-sub">{p.sub}</span>

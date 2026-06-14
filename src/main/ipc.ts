@@ -1,46 +1,12 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { PROVIDERS, getProviderConfig, getStoredKey, saveProviderKey } from '@harnext/core'
+import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
 import type { AppSettings, LoopInput, StartAgentInput } from '../shared/types'
 import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
 import { currentBranch, isGitRepo } from './git'
 import { LoopScheduler } from './loops'
-
-const PROVIDER_SUBS: Record<string, string> = {
-  anthropic: 'Claude, direct API',
-  openai: 'GPT, direct API',
-  google: 'Gemini, direct API',
-  xai: 'Grok, direct API',
-  openrouter: 'Unified gateway · 300+ models',
-  groq: 'Fast open-model inference',
-  mistral: 'Mistral, direct API',
-  cerebras: 'Fast open-model inference',
-  nvidia: 'NVIDIA NIM endpoints',
-  ollama: 'Runs on this machine'
-}
-
-const PROVIDER_MODELS: Record<string, string[]> = {
-  anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-haiku-4-5'],
-  openai: ['gpt-5.3-codex', 'gpt-5.1', 'gpt-5.1-mini'],
-  google: ['gemini-3-pro-preview', 'gemini-3-flash-preview'],
-  xai: ['grok-4', 'grok-3'],
-  openrouter: [
-    'anthropic/claude-sonnet-4.6',
-    'anthropic/claude-opus-4.1',
-    'openai/gpt-5.1',
-    'openai/gpt-5.1-mini',
-    'google/gemini-3-pro',
-    'qwen/qwen3-coder-480b',
-    'deepseek/deepseek-v3.2',
-    'x-ai/grok-4'
-  ],
-  groq: ['llama-3.3-70b-versatile', 'qwen-2.5-coder-32b'],
-  mistral: ['mistral-large-latest', 'codestral-latest'],
-  cerebras: ['qwen-3-235b-a22b-instruct-2507'],
-  nvidia: ['moonshotai/kimi-k2.5'],
-  ollama: ['llama3.1', 'qwen2.5-coder']
-}
+import { getProviderModels, listProviders, verifyProvider } from './providers'
 
 function getWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
@@ -70,23 +36,21 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) => db.setSettings(patch))
 
   // providers
-  ipcMain.handle('providers:list', () =>
-    PROVIDERS.map((p) => {
-      const models = PROVIDER_MODELS[p.id] ?? [p.defaultModel]
-      return {
-        id: p.id,
-        name: p.name,
-        sub: PROVIDER_SUBS[p.id] ?? '',
-        defaultModel: p.defaultModel,
-        models: models.includes(p.defaultModel) ? models : [p.defaultModel, ...models],
-        authenticated: p.local
-          ? Boolean(getProviderConfig(p.id)?.baseUrl ?? p.defaultBaseUrl)
-          : Boolean((p.envVar && process.env[p.envVar]) || getStoredKey(p.id))
-      }
-    })
-  )
+  ipcMain.handle('providers:list', () => listProviders())
+  ipcMain.handle('providers:models', (_e, provider: string) => getProviderModels(provider))
   ipcMain.handle('providers:saveKey', (_e, provider: string, key: string) => {
     saveProviderKey(provider, key)
+  })
+  ipcMain.handle('providers:saveBaseUrl', (_e, provider: string, baseUrl: string) => {
+    saveProviderConfig(provider, { baseUrl })
+  })
+  ipcMain.handle(
+    'providers:verify',
+    (_e, provider: string, cred: { key?: string; baseUrl?: string }) =>
+      verifyProvider(provider, cred)
+  )
+  ipcMain.handle('providers:remove', (_e, provider: string) => {
+    removeProviderConfig(provider)
   })
 
   // projects

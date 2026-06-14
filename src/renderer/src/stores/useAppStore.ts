@@ -32,8 +32,12 @@ interface AppStore {
   loopsByProject: Record<number, LoopMeta[]>
   loopRuns: Record<number, LoopRun[]>
 
+  /** Live model catalog per provider id, fetched lazily and cached. */
+  providerModels: Record<string, string[]>
+
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
+  loadProviderModels: (providerId: string) => Promise<void>
 
   loadProjects: () => Promise<void>
   openProjectDialog: () => Promise<Project | null>
@@ -139,6 +143,7 @@ export const useAppStore = create<AppStore>((set, get) => {
 
   return {
     settings: null,
+    providerModels: {},
     projects: [],
     projectsLoaded: false,
     agents: {},
@@ -157,6 +162,11 @@ export const useAppStore = create<AppStore>((set, get) => {
     saveSettings: async (patch) => {
       const settings = await window.api.settings.set(patch)
       set({ settings })
+    },
+
+    loadProviderModels: async (providerId) => {
+      const models = await window.api.providers.models(providerId)
+      set((state) => ({ providerModels: { ...state.providerModels, [providerId]: models } }))
     },
 
     loadProjects: async () => {
