@@ -3594,6 +3594,12 @@ html[data-density='compact'] .body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mp-ic {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--tx-1);
+}
 .mp.mono .mp-val,
 .mp.mono .mp-opt-label,
 .mp.mono .mp-search input {

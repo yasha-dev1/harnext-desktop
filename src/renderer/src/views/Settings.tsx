@@ -10,6 +10,7 @@ import type {
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { EditorLogo } from '../components/EditorLogo'
 import { ProviderLogo } from '../components/ProviderLogo'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
@@ -667,7 +668,13 @@ function GeneralTab({
           label="Default editor"
           desc="Opened when you hit “Editor” on an agent — launches the agent's worktree."
         >
-          <Sel value={settings.editor} onChange={(v) => save({ editor: v })} options={EDITORS} />
+          <ModelPicker
+            value={settings.editor}
+            models={EDITORS}
+            onChange={(v) => save({ editor: v })}
+            placeholder="Search editors…"
+            icon={(name) => <EditorLogo name={name} size={15} />}
+          />
         </Row>
         <Row
           label="Open editor when an agent finishes"

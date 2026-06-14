@@ -13,13 +13,16 @@ export function ModelPicker({
   models,
   onChange,
   mono = false,
-  placeholder = 'Search models…'
+  placeholder = 'Search models…',
+  icon
 }: {
   value: string
   models: string[]
   onChange: (v: string) => void
   mono?: boolean
   placeholder?: string
+  /** Optional leading brand/icon per option, shown on the trigger and in the list. */
+  icon?: (value: string) => JSX.Element
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -98,6 +101,7 @@ export function ModelPicker({
         aria-expanded={open}
         onClick={() => (open ? setOpen(false) : openMenu())}
       >
+        {icon && value && <span className="mp-ic">{icon(value)}</span>}
         <span className="mp-val">{value || placeholder}</span>
         <Icon.chevron size={12} />
       </button>
@@ -134,6 +138,7 @@ export function ModelPicker({
                 }}
               >
                 <span className="mp-check">{m === value && <Icon.check size={12} />}</span>
+                {icon && <span className="mp-ic">{icon(m)}</span>}
                 <span className="mp-opt-label">{m}</span>
               </div>
             ))}
