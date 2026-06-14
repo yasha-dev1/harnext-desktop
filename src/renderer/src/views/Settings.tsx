@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { JSX, ReactNode } from 'react'
-import type { AppSettings, PermissionMode, ProviderOption } from '@shared/types'
+import type {
+  AppSettings,
+  PermissionMode,
+  ProviderOption,
+  ProviderVerifyResult
+} from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
+import { ProviderLogo } from '../components/ProviderLogo'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
 
@@ -71,6 +77,8 @@ const MODE_LABEL: Record<PermissionMode, string> = {
   bypassPermissions: 'Full access'
 }
 
+const GOAL_BLOG_URL = 'https://harnext.dev/blog/goal-mode'
+
 function ModelsTab({
   settings,
   save,
@@ -80,6 +88,7 @@ function ModelsTab({
   save: (p: Partial<AppSettings>) => void
   models: string[]
 }): JSX.Element {
+  const [advanced, setAdvanced] = useState(false)
   return (
     <div className="set-stack">
       <div className="set-card">
@@ -108,68 +117,336 @@ function ModelsTab({
         </Row>
       </div>
 
-      <div className="set-card accent">
-        <div className="set-card-head">
-          <Icon.loop size={15} />
-          <h3>Goal mode · Evaluator pattern</h3>
-          <span className="hint">
-            triggered by <code>/goal</code>
-          </span>
-        </div>
-        <div
-          style={{ padding: '14px 18px 6px', fontSize: 12, color: 'var(--tx-2)', lineHeight: 1.6 }}
+      <div className="set-card">
+        <button
+          className={'set-card-head adv-head' + (advanced ? ' open' : '')}
+          onClick={() => setAdvanced((v) => !v)}
+          aria-expanded={advanced}
         >
-          When a prompt starts with <code>/goal</code>, harnext runs a two-model loop instead of a
-          single agent — a smart model plans &amp; reviews while an executor writes the code.
+          <Icon.settings size={15} />
+          <h3>Advanced</h3>
+          <span className="hint">Goal mode · evaluator models</span>
+          <Icon.chevron size={15} className={'adv-chev' + (advanced ? ' open' : '')} />
+        </button>
+        {advanced && (
+          <>
+            <div className="adv-note">
+              <span>
+                Goal mode (<code>/goal</code>) runs a two-model evaluator loop instead of a single
+                agent — a smart model plans &amp; reviews while an executor writes the code.
+              </span>
+              <a className="adv-link" href={GOAL_BLOG_URL} target="_blank" rel="noreferrer">
+                Learn how it works
+                <Icon.arrowR size={12} />
+              </a>
+            </div>
+            <Row
+              label="Smart model"
+              desc="Plans the work and evaluates the diff before it reaches you."
+            >
+              <Sel value={settings.smart} onChange={(v) => save({ smart: v })} options={models} />
+            </Row>
+            <Row
+              label="Executor model"
+              desc="Does the hands-on editing. A faster, cheaper coder pairs well here."
+            >
+              <Sel
+                value={settings.executor}
+                onChange={(v) => save({ executor: v })}
+                options={models}
+              />
+            </Row>
+            <Row
+              label="Evaluator loop"
+              desc="When the smart model rejects a result, send it back to the executor to fix automatically."
+            >
+              <Sw on={settings.evalLoop} onChange={(v) => save({ evalLoop: v })} />
+            </Row>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProvStatus({ p, active }: { p: ProviderOption; active: boolean }): JSX.Element {
+  if (active && p.authenticated)
+    return (
+      <span className="spill st-done sm">
+        <span className="sdot" />
+        Active
+      </span>
+    )
+  if (active)
+    return (
+      <span className="spill st-failed sm">
+        <span className="sdot" />
+        No key
+      </span>
+    )
+  if (p.authenticated)
+    return (
+      <span className="spill st-input sm">
+        <span className="sdot" />
+        Ready
+      </span>
+    )
+  return (
+    <span className="spill st-paused sm">
+      <span className="sdot" />
+      Set up
+    </span>
+  )
+}
+
+const WIZ_STEPS = ['Connect', 'Model', 'Activate']
+
+function ProviderSetup({
+  provider,
+  active,
+  startAtModel,
+  onCancel,
+  onActivate
+}: {
+  provider: ProviderOption
+  active: boolean
+  startAtModel: boolean
+  onCancel: () => void
+  onActivate: (model: string) => void
+}): JSX.Element {
+  const local = provider.local
+  const providerModels = useAppStore((s) => s.providerModels)
+  const loadProviderModels = useAppStore((s) => s.loadProviderModels)
+  const [step, setStep] = useState(startAtModel ? 1 : 0)
+  const [key, setKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? 'http://localhost:11434')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<ProviderVerifyResult | null>(null)
+  const [model, setModel] = useState(provider.defaultModel)
+
+  // Pull the full catalog for an already-connected provider (which skips the
+  // verify step that would otherwise surface it).
+  useEffect(() => {
+    if (provider.authenticated) void loadProviderModels(provider.id)
+  }, [provider.id, provider.authenticated, loadProviderModels])
+
+  // Models offered in step 2: curated favourites first, enriched with the live
+  // catalog (cached) and anything the verify probe just returned, deduped.
+  const models = useMemo(() => {
+    const live = [...(providerModels[provider.id] ?? []), ...(result?.models ?? [])]
+    return Array.from(new Set([...provider.models, ...live]))
+  }, [provider.models, provider.id, providerModels, result])
+
+  const verify = async (): Promise<void> => {
+    setBusy(true)
+    setResult(null)
+    const res = await window.api.providers.verify(provider.id, { key: key.trim(), baseUrl })
+    setResult(res)
+    setBusy(false)
+    if (res.ok) {
+      if (local) await window.api.providers.saveBaseUrl(provider.id, baseUrl.trim())
+      else if (key.trim()) await window.api.providers.saveKey(provider.id, key.trim())
+    }
+  }
+
+  const verified = result?.ok ?? false
+
+  return (
+    <div className="set-stack">
+      <div className="set-card">
+        <div className="set-card-head">
+          <span className="wiz-logo">
+            <ProviderLogo id={provider.id} size={16} />
+          </span>
+          <h3>Set up {provider.name}</h3>
+          <span className="hint">{provider.sub}</span>
+          <button className="wiz-x" onClick={onCancel} title="Cancel">
+            <Icon.x size={14} />
+          </button>
         </div>
-        <div style={{ padding: '16px 18px 6px' }}>
-          <div className="evald">
-            <div className="evald-node smart">
-              <div className="evald-role">
-                <Icon.brain size={13} />
-                Smart model
-              </div>
-              <div className="evald-mdl">{settings.smart}</div>
-              <div className="evald-sub">
-                Breaks the task into a plan and reviews each result against it.
-              </div>
+
+        <div className="wiz-steps">
+          {WIZ_STEPS.map((label, i) => (
+            <div
+              key={label}
+              className={'wiz-step' + (i === step ? ' active' : i < step ? ' done' : '')}
+            >
+              <span className="wiz-num">{i < step ? <Icon.check size={11} /> : i + 1}</span>
+              {label}
             </div>
-            <div className="evald-arrows">
-              <Icon.arrowR size={16} />
-              <span className="lbl">delegates</span>
-              <Icon.arrowL size={16} />
-              <span className="lbl">returns</span>
-            </div>
-            <div className="evald-node exec">
-              <div className="evald-role">
-                <Icon.zap size={13} />
-                Executor model
+          ))}
+        </div>
+
+        {step === 0 && (
+          <div className="wiz-body">
+            {local ? (
+              <>
+                <p className="wiz-lead">
+                  {provider.name} runs on your machine. Point harnext at the server&apos;s address —
+                  no API key needed.
+                </p>
+                <div className="field">
+                  <span className="field-ic">
+                    <Icon.terminal size={15} />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="http://localhost:11434"
+                    value={baseUrl}
+                    onChange={(e) => {
+                      setBaseUrl(e.target.value)
+                      setResult(null)
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="wiz-lead">
+                  Paste an API key for {provider.name}. It&apos;s stored locally in{' '}
+                  <code>~/.harnext</code> and only ever sent to the provider.
+                </p>
+                <div className="field">
+                  <span className="field-ic">
+                    <Icon.key size={15} />
+                  </span>
+                  <input
+                    type="password"
+                    placeholder="Paste your API key"
+                    value={key}
+                    autoFocus
+                    onChange={(e) => {
+                      setKey(e.target.value)
+                      setResult(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && key.trim() && !busy) void verify()
+                    }}
+                  />
+                </div>
+                {provider.consoleUrl && (
+                  <a
+                    className="wiz-link"
+                    href={provider.consoleUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Icon.external size={12} />
+                    Get a key from {provider.name}
+                  </a>
+                )}
+              </>
+            )}
+
+            {result && (
+              <div className={'wiz-result ' + (result.ok ? 'ok' : 'bad')}>
+                {result.ok ? <Icon.check size={14} /> : <Icon.alert size={14} />}
+                <span>
+                  {result.message}
+                  {result.ok && result.models.length > 0 && (
+                    <span className="wiz-result-sub">
+                      {' '}
+                      · {result.models.length} models available
+                    </span>
+                  )}
+                </span>
               </div>
-              <div className="evald-mdl">{settings.executor}</div>
-              <div className="evald-sub">
-                Reads, edits and runs code in the worktree to satisfy each step.
-              </div>
+            )}
+
+            <div className="wiz-foot">
+              <button className="btn ghost" onClick={onCancel}>
+                Cancel
+              </button>
+              <span className="spacer" />
+              {verified ? (
+                <button className="btn primary" onClick={() => setStep(1)}>
+                  Continue
+                  <Icon.arrowR size={14} />
+                </button>
+              ) : (
+                <button
+                  className="btn primary"
+                  disabled={busy || (!local && !key.trim())}
+                  onClick={() => void verify()}
+                >
+                  {busy ? (
+                    <>
+                      <Icon.refresh size={14} className="wiz-spin" />
+                      Checking…
+                    </>
+                  ) : (
+                    <>
+                      <Icon.shield size={14} />
+                      Verify connection
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
-        </div>
-        <Row
-          label="Smart model"
-          desc="Plans the work and evaluates the diff before it reaches you."
-        >
-          <Sel value={settings.smart} onChange={(v) => save({ smart: v })} options={models} />
-        </Row>
-        <Row
-          label="Executor model"
-          desc="Does the hands-on editing. A faster, cheaper coder pairs well here."
-        >
-          <Sel value={settings.executor} onChange={(v) => save({ executor: v })} options={models} />
-        </Row>
-        <Row
-          label="Evaluator loop"
-          desc="When the smart model rejects a result, send it back to the executor to fix automatically."
-        >
-          <Sw on={settings.evalLoop} onChange={(v) => save({ evalLoop: v })} />
-        </Row>
+        )}
+
+        {step === 1 && (
+          <div className="wiz-body">
+            <p className="wiz-lead">
+              Pick the default model harnext codes with on {provider.name}. You can change it
+              anytime in the Models tab.
+            </p>
+            <Sel value={model} onChange={setModel} options={models} />
+            <div className="wiz-foot">
+              <button
+                className="btn ghost"
+                onClick={() => (startAtModel ? onCancel() : setStep(0))}
+              >
+                <Icon.chevronL size={14} />
+                Back
+              </button>
+              <span className="spacer" />
+              <button className="btn primary" onClick={() => setStep(2)}>
+                Continue
+                <Icon.arrowR size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="wiz-body">
+            <div className="wiz-summary">
+              <div className="wiz-sum-row">
+                <span className="wiz-sum-k">Provider</span>
+                <span className="wiz-sum-v">{provider.name}</span>
+              </div>
+              <div className="wiz-sum-row">
+                <span className="wiz-sum-k">Model</span>
+                <span className="wiz-sum-v">{model}</span>
+              </div>
+              <div className="wiz-sum-row">
+                <span className="wiz-sum-k">Connection</span>
+                <span className="spill st-done sm">
+                  <span className="sdot" />
+                  {provider.authenticated || verified ? 'Connected' : 'Saved'}
+                </span>
+              </div>
+            </div>
+            <p className="wiz-lead">
+              {active
+                ? `${provider.name} is already your active provider — this updates its model.`
+                : `Make ${provider.name} the active provider for new agents in this project.`}
+            </p>
+            <div className="wiz-foot">
+              <button className="btn ghost" onClick={() => setStep(1)}>
+                <Icon.chevronL size={14} />
+                Back
+              </button>
+              <span className="spacer" />
+              <button className="btn primary" onClick={() => onActivate(model)}>
+                <Icon.check size={14} />
+                {active ? 'Save changes' : `Use ${provider.name}`}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -186,24 +463,49 @@ function ProvidersTab({
   providers: ProviderOption[]
   refresh: () => void
 }): JSX.Element {
-  const [key, setKey] = useState('')
-  const [saved, setSaved] = useState(false)
-  const selected = providers.find((p) => p.id === settings.provider)
+  // Which provider's setup wizard is open. `model` skips straight to the model
+  // step for a provider that's already connected.
+  const [setup, setSetup] = useState<{ id: string; model: boolean } | null>(null)
+  const active = providers.find((p) => p.id === settings.provider)
+  const setupProvider = providers.find((p) => p.id === setup?.id)
 
-  const saveKey = async (): Promise<void> => {
-    if (!key.trim()) return
-    await window.api.providers.saveKey(settings.provider, key.trim())
-    setKey('')
-    setSaved(true)
-    refresh()
+  if (setup && setupProvider) {
+    return (
+      <ProviderSetup
+        provider={setupProvider}
+        active={setupProvider.id === settings.provider}
+        startAtModel={setup.model}
+        onCancel={() => setSetup(null)}
+        onActivate={(model) => {
+          save({ provider: setupProvider.id, model })
+          setSetup(null)
+          refresh()
+        }}
+      />
+    )
   }
+
+  const open = (p: ProviderOption): void => setSetup({ id: p.id, model: p.authenticated })
 
   return (
     <div className="set-stack">
+      {active && !active.authenticated && (
+        <div className="prov-warn">
+          <Icon.alert size={15} />
+          <div>
+            <b>{active.name} isn&apos;t connected.</b> Agents will fail until you finish setup.
+          </div>
+          <button className="btn primary sm" onClick={() => open(active)}>
+            Finish setup
+          </button>
+        </div>
+      )}
+
       <div className="set-card">
         <div className="set-card-head">
           <Icon.cube size={15} />
           <h3>Model provider</h3>
+          <span className="hint">pick one to set up — it activates only when connected</span>
         </div>
         <div style={{ padding: 16 }}>
           <div className="prov-grid">
@@ -211,62 +513,35 @@ function ProvidersTab({
               <button
                 key={p.id}
                 className={'prov' + (settings.provider === p.id ? ' on' : '')}
-                onClick={() => {
-                  save({ provider: p.id, model: p.defaultModel })
-                  setSaved(false)
-                }}
+                onClick={() => open(p)}
               >
-                <span className="prov-rd" />
+                <span className="prov-logo">
+                  <ProviderLogo id={p.id} size={20} />
+                </span>
                 <span className="prov-meta">
                   <span className="prov-nm">{p.name}</span>
-                  <span className="prov-sub">{p.sub}</span>
+                  <span className="prov-subrow">
+                    <span className="prov-sub">{p.sub}</span>
+                    <ProvStatus p={p} active={p.id === settings.provider} />
+                  </span>
                 </span>
               </button>
             ))}
           </div>
         </div>
-        <Row
-          label="API key"
-          desc="Stored locally in ~/.harnext. Never leaves this machine except to call the provider."
-          col
-        >
-          <div className="keyrow">
-            <div className="field sm">
-              <span className="field-ic">
-                <Icon.key size={15} />
-              </span>
-              <input
-                type="password"
-                placeholder={
-                  selected?.authenticated
-                    ? '••••••••••••  (key on file — paste to replace)'
-                    : 'Paste your API key'
-                }
-                value={key}
-                onChange={(e) => {
-                  setKey(e.target.value)
-                  setSaved(false)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void saveKey()
-                }}
-                onBlur={() => void saveKey()}
-              />
-            </div>
-            {(saved || selected?.authenticated) && (
-              <span className="spill st-done sm">
-                <span className="sdot" />
-                {saved ? 'Saved' : 'Connected'}
-              </span>
-            )}
-            {!saved && selected && !selected.authenticated && (
-              <span className="spill st-failed sm">
-                <span className="sdot" />
-                No key
-              </span>
-            )}
-          </div>
-        </Row>
+        {active && (
+          <Row
+            label="Active provider"
+            desc="Used for every new agent in this project. Stored locally in ~/.harnext."
+          >
+            <span className="tag">
+              <Icon.cube size={13} />
+              <b>
+                {active.name} · {settings.model}
+              </b>
+            </span>
+          </Row>
+        )}
       </div>
     </div>
   )
@@ -386,6 +661,8 @@ export default function Settings(): JSX.Element {
   const project = useAppStore((s) => s.projects.find((p) => p.id === projectId))
   const settings = useAppStore((s) => s.settings)
   const saveSettings = useAppStore((s) => s.saveSettings)
+  const providerModels = useAppStore((s) => s.providerModels)
+  const loadProviderModels = useAppStore((s) => s.loadProviderModels)
   const [tab, setTab] = useState('models')
   const [providers, setProviders] = useState<ProviderOption[]>([])
 
@@ -394,9 +671,15 @@ export default function Settings(): JSX.Element {
   }
   useEffect(refreshProviders, [])
 
+  const provider = settings?.provider
+  useEffect(() => {
+    if (provider) void loadProviderModels(provider)
+  }, [provider, loadProviderModels])
+
   if (!settings || !project) return <div />
   const save = (p: Partial<AppSettings>): void => void saveSettings(p)
-  const models = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
+  const curated = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
+  const models = providerModels[settings.provider] ?? curated
 
   const TABS: { id: string; label: string; ic: IconName }[] = [
     { id: 'models', label: 'Models', ic: 'loop' },

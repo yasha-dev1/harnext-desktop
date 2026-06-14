@@ -20,8 +20,14 @@ const api: DesktopApi = {
   },
   providers: {
     list: () => ipcRenderer.invoke('providers:list'),
+    models: (provider: string) => ipcRenderer.invoke('providers:models', provider),
     saveKey: (provider: string, key: string) =>
-      ipcRenderer.invoke('providers:saveKey', provider, key)
+      ipcRenderer.invoke('providers:saveKey', provider, key),
+    saveBaseUrl: (provider: string, baseUrl: string) =>
+      ipcRenderer.invoke('providers:saveBaseUrl', provider, baseUrl),
+    verify: (provider: string, cred: { key?: string; baseUrl?: string }) =>
+      ipcRenderer.invoke('providers:verify', provider, cred),
+    remove: (provider: string) => ipcRenderer.invoke('providers:remove', provider)
   },
   projects: {
     list: () => ipcRenderer.invoke('projects:list'),
