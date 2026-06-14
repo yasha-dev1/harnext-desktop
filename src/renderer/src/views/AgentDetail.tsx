@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { JSX } from 'react'
 import type {
   AgentMeta,
@@ -41,7 +42,7 @@ function roleModel(agent: AgentMeta, role: Role): string {
 function MsgText({ text }: { text: string }): JSX.Element {
   return (
     <div className="msg-text">
-      <ReactMarkdown>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
     </div>
   )
 }
