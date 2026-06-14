@@ -115,7 +115,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         const justFinished =
           (push.status === 'review' || push.status === 'input') && agent.status !== push.status
         if (justFinished && state.settings?.soundOnDone) {
-          playSound(state.settings.doneSound)
+          playSound(state.settings.doneSound, state.settings.customSoundPath)
         }
         set({
           agents: {

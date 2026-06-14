@@ -689,11 +689,29 @@ function GeneralTab({
         >
           <Sw on={settings.soundOnDone} onChange={(v) => save({ soundOnDone: v })} />
         </Row>
-        <Row label="Sound" desc="Which sound plays when an agent finishes.">
+        <Row
+          label="Sound"
+          desc={
+            settings.doneSound === 'custom'
+              ? settings.customSoundPath
+                ? `Custom file: ${settings.customSoundPath.split(/[/\\]/).pop()}`
+                : 'Pick your own audio file to play.'
+              : 'Which sound plays when an agent finishes.'
+          }
+        >
           <span className="ctl-sel">
             <select
               value={settings.doneSound}
-              onChange={(e) => save({ doneSound: e.target.value })}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'custom') {
+                  void window.api.pickAudioFile().then((p) => {
+                    if (p) save({ doneSound: 'custom', customSoundPath: p })
+                  })
+                } else {
+                  save({ doneSound: v })
+                }
+              }}
             >
               {SOUNDS.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -702,10 +720,24 @@ function GeneralTab({
               ))}
             </select>
           </span>
+          {settings.doneSound === 'custom' && (
+            <button
+              className="btn ghost"
+              style={{ marginLeft: 8 }}
+              onClick={() =>
+                void window.api.pickAudioFile().then((p) => {
+                  if (p) save({ doneSound: 'custom', customSoundPath: p })
+                })
+              }
+            >
+              <Icon.folder size={13} />
+              Choose…
+            </button>
+          )}
           <button
             className="btn ghost"
             style={{ marginLeft: 8 }}
-            onClick={() => playSound(settings.doneSound)}
+            onClick={() => playSound(settings.doneSound, settings.customSoundPath)}
           >
             <Icon.play size={13} />
             Preview

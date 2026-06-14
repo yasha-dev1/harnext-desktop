@@ -1,16 +1,14 @@
-import bruhUrl from '../assets/sounds/bruh.mp3'
-
 export interface SoundOption {
   id: string
   label: string
 }
 
-// `bruh` is a bundled mp3; the others are short Web-Audio chimes so there are
-// several choices without shipping more files. `none` is silent.
+// Built-in cues are short Web-Audio chimes (no files shipped). `custom` plays a
+// user-chosen audio file from disk; `none` is silent.
 export const SOUNDS: SoundOption[] = [
-  { id: 'bruh', label: 'Bruh' },
   { id: 'chime', label: 'Chime' },
   { id: 'ding', label: 'Ding' },
+  { id: 'custom', label: 'Custom file…' },
   { id: 'none', label: 'None' }
 ]
 
@@ -40,14 +38,25 @@ function tones(freqs: number[], step = 0.16): void {
   })
 }
 
-/** Play the sound with the given id. Unknown / `none` ids are silent. */
-export function playSound(id: string): void {
+function playUrl(url: string): void {
+  const a = new Audio(url)
+  a.volume = 0.85
+  void a.play().catch(() => {})
+}
+
+/**
+ * Play the cue with the given id. `custom` loads `customPath` from disk via the
+ * main process; unknown / `none` / a custom id with no path are silent.
+ */
+export function playSound(id: string, customPath?: string): void {
   if (!id || id === 'none') return
   try {
-    if (id === 'bruh') {
-      const a = new Audio(bruhUrl)
-      a.volume = 0.85
-      void a.play().catch(() => {})
+    if (id === 'custom') {
+      if (!customPath) return
+      void window.api
+        .readSound(customPath)
+        .then((url) => url && playUrl(url))
+        .catch(() => {})
       return
     }
     if (id === 'chime') return tones([659.25, 880])
