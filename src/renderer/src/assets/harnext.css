@@ -3560,3 +3560,114 @@ html[data-density='compact'] .body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Searchable model dropdown (ModelPicker) ───────────────────────────── */
+.mp {
+  position: relative;
+  display: inline-block;
+}
+.mp-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--tx-0);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.12s;
+  max-width: 240px;
+}
+.mp-trigger:hover {
+  border-color: var(--line-2);
+}
+.mp-trigger svg {
+  color: var(--tx-2);
+  flex: none;
+}
+.mp-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp.mono .mp-val,
+.mp.mono .mp-opt-label,
+.mp.mono .mp-search input {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.mp-pop {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 5px);
+  left: 0;
+  width: 264px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.mp-pop.up {
+  top: auto;
+  bottom: calc(100% + 5px);
+}
+.mp-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.mp-search svg {
+  color: var(--tx-2);
+  flex: none;
+}
+.mp-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--tx-0);
+  font-size: 12.5px;
+}
+.mp-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+}
+.mp-opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--tx-1);
+  cursor: pointer;
+}
+.mp-opt .mp-check {
+  width: 12px;
+  flex: none;
+  color: var(--p-text);
+  display: inline-flex;
+}
+.mp-opt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-opt.hi {
+  background: var(--bg-3);
+  color: var(--tx-0);
+}
+.mp-empty {
+  padding: 12px 10px;
+  color: var(--tx-2);
+  font-size: 12px;
+  text-align: center;
+}
