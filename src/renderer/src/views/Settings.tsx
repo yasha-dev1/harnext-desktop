@@ -542,6 +542,7 @@ function ProvidersTab({
   // Which provider's setup wizard is open. `model` skips straight to the model
   // step for a provider that's already connected.
   const [setup, setSetup] = useState<{ id: string; model: boolean } | null>(null)
+  const providerModels = useAppStore((s) => s.providerModels)
   const active = providers.find((p) => p.id === settings.provider)
   const setupProvider = providers.find((p) => p.id === setup?.id)
 
@@ -553,7 +554,16 @@ function ProvidersTab({
         startAtModel={setup.model}
         onCancel={() => setSetup(null)}
         onActivate={(model) => {
-          save({ provider: setupProvider.id, model })
+          // Reconcile Goal-mode models on switch (issue #4): keep smart/executor
+          // only if valid for the new provider, else fall back to its default.
+          const valid = providerModels[setupProvider.id] ?? setupProvider.models
+          const keep = (m: string): string => (valid.includes(m) ? m : setupProvider.defaultModel)
+          save({
+            provider: setupProvider.id,
+            model,
+            smart: keep(settings.smart),
+            executor: keep(settings.executor)
+          })
           setSetup(null)
           refresh()
         }}

@@ -152,7 +152,16 @@ function ProviderStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
   const selected = providers.find((p) => p.id === settings?.provider)
 
   const selectProvider = (p: ProviderOption): void => {
-    void saveSettings({ provider: p.id, model: p.defaultModel })
+    // Keep current smart/executor selections only if they're valid for the new
+    // provider, otherwise fall back to its default — mirrors Settings so Goal
+    // mode never ends up pointing at the previous provider's model IDs.
+    const keep = (m: string | undefined): string => (m && p.models.includes(m) ? m : p.defaultModel)
+    void saveSettings({
+      provider: p.id,
+      model: p.defaultModel,
+      smart: keep(settings?.smart),
+      executor: keep(settings?.executor)
+    })
     setSaved(false)
     setKey('')
   }
