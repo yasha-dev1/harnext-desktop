@@ -151,6 +151,8 @@ export interface AppSettings {
   openOnDone: boolean
   soundOnDone: boolean
   doneSound: string
+  /** Absolute path to a user-chosen audio file, used when doneSound === 'custom'. */
+  customSoundPath: string
   evalLoop: boolean
 }
 
@@ -226,6 +228,10 @@ export interface DesktopApi {
     close(): void
   }
   pickDirectory(): Promise<string | null>
+  /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
+  pickAudioFile(): Promise<string | null>
+  /** Read a local audio file as a data URL so the renderer can play it. */
+  readSound(path: string): Promise<string | null>
   settings: {
     get(): Promise<AppSettings>
     set(patch: Partial<AppSettings>): Promise<AppSettings>

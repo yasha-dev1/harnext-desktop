@@ -211,7 +211,8 @@ const SETTINGS_DEFAULTS: AppSettings = {
   editor: 'VS Code',
   openOnDone: false,
   soundOnDone: true,
-  doneSound: 'bruh',
+  doneSound: 'chime',
+  customSoundPath: '',
   evalLoop: true
 }
 
