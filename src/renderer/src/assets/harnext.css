@@ -1073,12 +1073,92 @@ html[data-density='compact'] .body {
 
 .detail-cols {
   display: grid;
-  grid-template-columns: minmax(380px, 2fr) 3fr;
+  /* Driven by SplitView via the --split-cols var so the resize/collapse state
+     applies, while the narrow-width media query can still override it. */
+  grid-template-columns: var(--split-cols, minmax(380px, 2fr) 3fr);
   min-height: 0;
 }
-.detail-cols > div {
+.detail-cols > .thread,
+.detail-cols > .diffwrap {
   min-height: 0;
   overflow-y: auto;
+}
+
+/* draggable gutter between the panes */
+.col-gutter {
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+.col-gutter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--line);
+  transition:
+    width 0.12s,
+    background 0.12s;
+}
+.col-gutter:hover::after,
+body.col-resizing .col-gutter::after {
+  width: 3px;
+  background: var(--primary);
+}
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* thin rail shown when the diff pane is collapsed */
+.diff-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  background: var(--bg-1);
+  border-left: 1px solid var(--line);
+  color: var(--tx-2);
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+.diff-rail:hover {
+  color: var(--p-text);
+  background: var(--bg-2);
+}
+
+/* collapse control in the diff header */
+.diff-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tx-2);
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+.diff-collapse:hover {
+  color: var(--tx-0);
+  background: var(--bg-2);
+}
+/* collapse control living in the sandbox tab bar — pushed to the far right */
+.rp-tabs .rp-collapse {
+  margin-left: auto;
+  width: 26px;
+  padding: 0;
 }
 .thread {
   border-right: 1px solid var(--line);
@@ -3767,8 +3847,13 @@ html[data-density='compact'] .body {
 
 @media (max-width: 920px) {
   .detail-cols {
+    /* Direct value (not the --split-cols var) so the panes still stack here. */
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
+  }
+  /* No side-by-side resize when stacked. */
+  .col-gutter {
+    display: none;
   }
   .thread {
     border-right: none;

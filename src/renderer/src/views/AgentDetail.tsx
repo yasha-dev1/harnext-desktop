@@ -309,10 +309,12 @@ const FileBlock = memo(function FileBlock({ file }: { file: DiffFile }): JSX.Ele
 
 function DiffViewer({
   agent,
-  diff
+  diff,
+  onCollapse
 }: {
   agent: AgentMeta
   diff: WorktreeDiff | undefined
+  onCollapse?: () => void
 }): JSX.Element {
   const files = diff?.files ?? []
   return (
@@ -331,6 +333,16 @@ function DiffViewer({
           <span className="add">+{diff?.add ?? 0}</span>
           <span className="del">−{diff?.del ?? 0}</span>
         </span>
+        {onCollapse && (
+          <button
+            className="diff-collapse"
+            onClick={onCollapse}
+            title="Collapse diff pane"
+            aria-label="Collapse diff pane"
+          >
+            <Icon.chevronR size={16} />
+          </button>
+        )}
       </div>
       <div className="diff-scroll">
         {files.length === 0 ? (
@@ -420,15 +432,19 @@ function Explorer({ sandbox }: { sandbox: SandboxInfo }): JSX.Element {
 function RightPane({
   agent,
   diff,
-  sandbox
+  sandbox,
+  onCollapse
 }: {
   agent: AgentMeta
   diff: WorktreeDiff | undefined
   sandbox: SandboxInfo | undefined
+  // Forwarded to the diff header / tab bar so the pane can be collapsed.
+  onCollapse?: () => void
 }): JSX.Element {
   const [tab, setTab] = useState<'diff' | 'preview'>('diff')
   // Only surface the Preview tab when this agent actually has a sandbox.
-  if (!sandbox || sandbox.status === 'off') return <DiffViewer agent={agent} diff={diff} />
+  if (!sandbox || sandbox.status === 'off')
+    return <DiffViewer agent={agent} diff={diff} onCollapse={onCollapse} />
   const dotCls =
     sandbox.status === 'preparing' ? ' preparing' : sandbox.status === 'failed' ? ' failed' : ''
   return (
@@ -443,6 +459,16 @@ function RightPane({
           Preview
           <span className={'rp-dot' + dotCls} />
         </button>
+        {onCollapse && (
+          <button
+            className="diff-collapse rp-collapse"
+            onClick={onCollapse}
+            title="Collapse diff pane"
+            aria-label="Collapse diff pane"
+          >
+            <Icon.chevronR size={16} />
+          </button>
+        )}
       </div>
       <div className="rp-body">
         {tab === 'diff' ? <DiffViewer agent={agent} diff={diff} /> : <Explorer sandbox={sandbox} />}
@@ -729,6 +755,108 @@ function DetailActions({
   }
 }
 
+// ── resizable / collapsible split ────────────────────────────────────
+
+const SPLIT_MIN_LEFT = 380 // conversation floor
+const SPLIT_MIN_RIGHT = 360 // diff floor
+const SPLIT_GUTTER = 6 // gutter column width (px)
+const SPLIT_LEFT_KEY = 'harnext.detailSplit.left'
+const SPLIT_COLLAPSED_KEY = 'harnext.detailSplit.collapsed'
+
+// Conversation (left) | draggable gutter | Diff (right), with the diff pane
+// collapsible to a thin rail. Position + collapsed state persist in localStorage
+// (per-view). The grid template is fed through a CSS var so the narrow-width
+// media query can still override it and stack the panes.
+function SplitView({
+  agent,
+  timeline,
+  diff,
+  sandbox
+}: {
+  agent: AgentMeta
+  timeline: TimelineItem[]
+  diff: WorktreeDiff | undefined
+  sandbox: SandboxInfo | undefined
+}): JSX.Element {
+  const colsRef = useRef<HTMLDivElement>(null)
+  const [leftWidth, setLeftWidth] = useState(() => {
+    const v = Number(localStorage.getItem(SPLIT_LEFT_KEY))
+    return v >= SPLIT_MIN_LEFT ? v : 480
+  })
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(SPLIT_COLLAPSED_KEY) === '1'
+  )
+
+  useEffect(() => {
+    localStorage.setItem(SPLIT_LEFT_KEY, String(Math.round(leftWidth)))
+  }, [leftWidth])
+  useEffect(() => {
+    localStorage.setItem(SPLIT_COLLAPSED_KEY, collapsed ? '1' : '0')
+  }, [collapsed])
+
+  const startDrag = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = leftWidth
+    const total = colsRef.current?.getBoundingClientRect().width ?? 0
+    const max = Math.max(SPLIT_MIN_LEFT, total - SPLIT_MIN_RIGHT - SPLIT_GUTTER)
+    const onMove = (ev: PointerEvent): void => {
+      const next = startW + (ev.clientX - startX)
+      setLeftWidth(Math.min(max, Math.max(SPLIT_MIN_LEFT, next)))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      document.body.classList.remove('col-resizing')
+    }
+    document.body.classList.add('col-resizing')
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const cols = collapsed
+    ? '1fr 40px'
+    : `${Math.round(leftWidth)}px ${SPLIT_GUTTER}px minmax(${SPLIT_MIN_RIGHT}px, 1fr)`
+
+  return (
+    <div
+      className={'detail-cols' + (collapsed ? ' collapsed' : '')}
+      ref={colsRef}
+      style={{ ['--split-cols' as string]: cols }}
+    >
+      <Thread agent={agent} timeline={timeline} />
+      {collapsed ? (
+        <button
+          className="diff-rail"
+          onClick={() => setCollapsed(false)}
+          title="Show diff pane"
+          aria-label="Show diff pane"
+        >
+          <Icon.chevronL size={16} />
+          <Icon.diff size={16} />
+        </button>
+      ) : (
+        <>
+          <div
+            className="col-gutter"
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={startDrag}
+            onDoubleClick={() => setCollapsed(true)}
+            title="Drag to resize · double-click to collapse"
+          />
+          <RightPane
+            agent={agent}
+            diff={diff}
+            sandbox={sandbox}
+            onCollapse={() => setCollapsed(true)}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── page ─────────────────────────────────────────────────────────────
 
 export default function AgentDetail(): JSX.Element {
@@ -848,10 +976,7 @@ export default function AgentDetail(): JSX.Element {
           />
         </div>
       </div>
-      <div className="detail-cols">
-        <Thread agent={agent} timeline={timeline ?? []} />
-        <RightPane agent={agent} diff={diff} sandbox={sandbox} />
-      </div>
+      <SplitView agent={agent} timeline={timeline ?? []} diff={diff} sandbox={sandbox} />
     </div>
   )
 }
