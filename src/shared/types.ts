@@ -96,12 +96,16 @@ export interface WorktreeDiff {
 export type LoopType = 'interval' | 'daily' | 'weekly'
 
 export interface LoopConfig {
-  /** hours, for interval loops */
+  /** hours, for interval loops (legacy — prefer intervalMinutes) */
   intervalHours?: number
-  /** "HH:MM", for daily/weekly loops */
+  /** minutes between runs, for interval loops (supports sub-hour, e.g. 30) */
+  intervalMinutes?: number
+  /** "HH:MM" (any minute), for daily/weekly loops */
   time?: string
-  /** 0 = Monday … 6 = Sunday, for weekly loops */
+  /** 0 = Monday … 6 = Sunday, for weekly loops (legacy — prefer days) */
   day?: number
+  /** weekdays a weekly loop fires on (0 = Monday … 6 = Sunday) */
+  days?: number[]
   /** Model this loop pins, independent of the global default. Unset = follow default. */
   model?: string
   /** Provider this loop pins. Unset = follow the global default provider. */

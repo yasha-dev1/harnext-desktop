@@ -2,22 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
 import type { LoopConfig, LoopType, ProviderOption } from '@shared/types'
+import { buildCadence, DAY_SHORT } from '@shared/schedule'
 import { useAppStore } from '../stores/useAppStore'
 import { shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
 
-const HOURS = ['00:00', '02:00', '06:00', '08:00', '09:00', '12:00', '18:00', '22:00']
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const INTERVALS = [1, 3, 6, 12]
-const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-function buildCadence(type: LoopType, c: LoopConfig): string {
-  if (type === 'interval') {
-    const h = c.intervalHours ?? 6
-    return h === 1 ? 'Every hour' : `Every ${h} hours`
-  }
-  if (type === 'daily') return `Every day · ${c.time ?? '09:00'}`
-  return `Weekly · ${DAY_SHORT[c.day ?? 0]} ${c.time ?? '09:00'}`
+// Initial interval amount + unit, derived from a stored config (honours legacy hours).
+function initialInterval(c: LoopConfig | undefined): { amt: number; unit: 'minutes' | 'hours' } {
+  const mins = c?.intervalMinutes ?? (c?.intervalHours != null ? c.intervalHours * 60 : 360)
+  return mins % 60 === 0 ? { amt: mins / 60, unit: 'hours' } : { amt: mins, unit: 'minutes' }
 }
 
 export default function NewLoopForm(): JSX.Element {
@@ -38,12 +31,14 @@ export default function NewLoopForm(): JSX.Element {
   const [prompt, setPrompt] = useState(initial?.prompt ?? '')
   const [type, setType] = useState<LoopType>(initial?.type ?? 'daily')
   const [config, setConfig] = useState<LoopConfig>({
-    intervalHours: initial?.config.intervalHours ?? 6,
     time: initial?.config.time ?? '09:00',
-    day: initial?.config.day ?? 0,
+    days: initial?.config.days ?? (initial?.config.day != null ? [initial.config.day] : [0]),
     model: initial?.config.model,
     provider: initial?.config.provider
   })
+  const initInt = initialInterval(initial?.config)
+  const [intervalAmt, setIntervalAmt] = useState(initInt.amt)
+  const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours'>(initInt.unit)
   const [enabled, setEnabled] = useState(initial ? initial.status === 'active' : true)
   const [providers, setProviders] = useState<ProviderOption[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +50,15 @@ export default function NewLoopForm(): JSX.Element {
   if (!project) return <div />
   const valid = name.trim().length > 0 && prompt.trim().length > 0
   const set = (patch: Partial<LoopConfig>): void => setConfig((c) => ({ ...c, ...patch }))
+
+  // Interval amount + unit are the source of truth; fold them into the config.
+  const intervalMins = Math.max(1, intervalUnit === 'hours' ? intervalAmt * 60 : intervalAmt)
+  const days = config.days ?? [0]
+  const toggleDay = (d: number): void => {
+    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b)
+    if (next.length) set({ days: next }) // keep at least one weekday selected
+  }
+  const scheduleConfig: LoopConfig = { ...config, intervalMinutes: intervalMins }
 
   // Resolve the loop's pinned model/provider, falling back to the global default.
   const provider = config.provider ?? settings?.provider ?? ''
@@ -74,7 +78,7 @@ export default function NewLoopForm(): JSX.Element {
         title: name.trim(),
         prompt: prompt.trim(),
         type,
-        config: { ...config, model: model || undefined, provider: provider || undefined },
+        config: { ...scheduleConfig, model: model || undefined, provider: provider || undefined },
         enabled
       }
       const loop = initial ? await updateLoop(initial.id, input) : await createLoop(input)
@@ -169,50 +173,58 @@ export default function NewLoopForm(): JSX.Element {
             <div className="set-rl">
               <div className="set-label">Schedule</div>
               <div className="set-desc">
-                Resolves to: <b style={{ color: 'var(--p-text)' }}>{buildCadence(type, config)}</b>
+                Resolves to:{' '}
+                <b style={{ color: 'var(--p-text)' }}>{buildCadence(type, scheduleConfig)}</b>
               </div>
             </div>
-            <div className="set-rc">
+            <div
+              className="set-rc"
+              style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}
+            >
               {type === 'interval' && (
-                <span className="ctl-sel">
-                  <select
-                    value={config.intervalHours}
-                    onChange={(e) => set({ intervalHours: Number(e.target.value) })}
-                  >
-                    {INTERVALS.map((h) => (
-                      <option key={h} value={h}>
-                        {h === 1 ? '1 hour' : `${h} hours`}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-              )}
-              {(type === 'daily' || type === 'weekly') && (
                 <>
-                  {type === 'weekly' && (
-                    <span className="ctl-sel">
-                      <select
-                        value={config.day}
-                        onChange={(e) => set({ day: Number(e.target.value) })}
-                      >
-                        {DAYS.map((d, i) => (
-                          <option key={d} value={i}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </span>
-                  )}
+                  <div className="field sm" style={{ width: 74 }}>
+                    <input
+                      type="number"
+                      min={1}
+                      value={intervalAmt}
+                      onChange={(e) =>
+                        setIntervalAmt(Math.max(1, Math.floor(Number(e.target.value)) || 1))
+                      }
+                    />
+                  </div>
                   <span className="ctl-sel">
-                    <select value={config.time} onChange={(e) => set({ time: e.target.value })}>
-                      {HOURS.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
+                    <select
+                      value={intervalUnit}
+                      onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours')}
+                    >
+                      <option value="minutes">minutes</option>
+                      <option value="hours">hours</option>
                     </select>
                   </span>
                 </>
+              )}
+              {type === 'weekly' && (
+                <div className="seg">
+                  {DAY_SHORT.map((d, i) => (
+                    <button
+                      key={d}
+                      className={'seg-b' + (days.includes(i) ? ' active' : '')}
+                      onClick={() => toggleDay(i)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(type === 'daily' || type === 'weekly') && (
+                <div className="field sm" style={{ width: 108 }}>
+                  <input
+                    type="time"
+                    value={config.time ?? '09:00'}
+                    onChange={(e) => set({ time: e.target.value })}
+                  />
+                </div>
               )}
             </div>
           </div>
