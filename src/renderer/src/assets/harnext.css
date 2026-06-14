@@ -1156,6 +1156,125 @@ html[data-density='compact'] .body {
   color: var(--tx-0);
 }
 
+/* ── rendered markdown (agent output) ──────────────────────────────── */
+.msg-text > *:first-child {
+  margin-top: 0;
+}
+.msg-text > *:last-child {
+  margin-bottom: 0;
+}
+.msg-text p {
+  margin: 0 0 9px;
+}
+.msg-text h1,
+.msg-text h2,
+.msg-text h3,
+.msg-text h4 {
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 16px 0 8px;
+}
+.msg-text h1 {
+  font-size: 16px;
+}
+.msg-text h2 {
+  font-size: 14.5px;
+}
+.msg-text h3 {
+  font-size: 13px;
+}
+.msg-text h4 {
+  font-size: 12.5px;
+}
+.msg-text ul,
+.msg-text ol {
+  margin: 0 0 9px;
+  padding-left: 20px;
+}
+.msg-text li {
+  margin: 3px 0;
+}
+.msg-text li > ul,
+.msg-text li > ol {
+  margin: 3px 0;
+}
+.msg-text a {
+  color: var(--p-text);
+  text-decoration: none;
+}
+.msg-text a:hover {
+  text-decoration: underline;
+}
+.msg-text strong {
+  font-weight: 650;
+  color: var(--tx-0);
+}
+.msg-text del {
+  opacity: 0.6;
+}
+.msg-text blockquote {
+  margin: 0 0 9px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--line-2);
+  color: var(--tx-2);
+}
+.msg-text hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 14px 0;
+}
+/* fenced code blocks — the inline-code chrome would look cramped here */
+.msg-text pre {
+  margin: 0 0 9px;
+  padding: 11px 13px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.msg-text pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--tx-1);
+  white-space: pre;
+}
+/* GFM tables — the reported issue */
+.msg-text table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 11.5px;
+}
+.msg-text th,
+.msg-text td {
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.msg-text th {
+  background: var(--bg-2);
+  font-weight: 650;
+  color: var(--tx-0);
+  white-space: nowrap;
+}
+.msg-text tbody tr:nth-child(even) {
+  background: color-mix(in oklab, var(--bg-2), transparent 55%);
+}
+/* GFM task lists */
+.msg-text li.task-list-item {
+  list-style: none;
+  margin-left: -18px;
+}
+.msg-text li.task-list-item input {
+  margin-right: 7px;
+}
+
 .plan-list {
   list-style: none;
   display: flex;
