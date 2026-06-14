@@ -1,0 +1,6 @@
+{
+  "name": "pr-ready-sound-skill",
+  "private": true,
+  "description": "Self-contained scripts for the pr-ready-sound skill. CommonJS so upload-dropbox.js runs regardless of the parent project's module type.",
+  "type": "commonjs"
+}
