@@ -51,6 +51,7 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
   const settingsMatch = useMatch('/project/:projectId/settings')
   const loopsMatch = useMatch('/project/:projectId/loops/*')
   const loopsRootMatch = useMatch('/project/:projectId/loops')
+  const homeMatch = useMatch({ path: '/project/:projectId', end: true })
 
   const agentIds = useAppStore((s) => s.agentIdsByProject[project.id]) ?? []
   const agents = useAppStore((s) => s.agents)
@@ -87,6 +88,13 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
       </div>
 
       <div className="aside-scroll">
+        <button
+          className={'aside-menu' + (homeMatch ? ' active' : '')}
+          onClick={() => navigate(`/project/${project.id}`)}
+        >
+          <Icon.plus size={16} />
+          <span className="aside-menu-label">New Task</span>
+        </button>
         <button
           className={'aside-menu' + (loopsMatch || loopsRootMatch ? ' active' : '')}
           onClick={() => navigate(`/project/${project.id}/loops`)}
