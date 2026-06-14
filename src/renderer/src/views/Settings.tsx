@@ -33,16 +33,19 @@ function Row({
   label,
   desc,
   children,
-  col
+  col,
+  dim
 }: {
   label: ReactNode
   desc?: ReactNode
   children: ReactNode
   col?: boolean
+  // De-emphasize the label/desc when the row's parent control is off.
+  dim?: boolean
 }): JSX.Element {
   return (
     <div className={'set-row' + (col ? ' col' : '')}>
-      <div className="set-rl">
+      <div className={'set-rl' + (dim ? ' dim' : '')}>
         <div className="set-label">{label}</div>
         {desc && <div className="set-desc">{desc}</div>}
       </div>
@@ -694,17 +697,21 @@ function GeneralTab({
         </Row>
         <Row
           label="Sound"
+          dim={!settings.soundOnDone}
           desc={
-            settings.doneSound === 'custom'
-              ? settings.customSoundPath
-                ? `Custom file: ${settings.customSoundPath.split(/[/\\]/).pop()}`
-                : 'Pick your own audio file to play.'
-              : 'Which sound plays when an agent finishes.'
+            !settings.soundOnDone
+              ? 'Turn on “Play a sound when an agent is ready” to choose a cue.'
+              : settings.doneSound === 'custom'
+                ? settings.customSoundPath
+                  ? `Custom file: ${settings.customSoundPath.split(/[/\\]/).pop()}`
+                  : 'Pick your own audio file to play.'
+                : 'Which sound plays when an agent finishes.'
           }
         >
           <span className="ctl-sel">
             <select
               value={doneSound}
+              disabled={!settings.soundOnDone}
               onChange={(e) => {
                 const v = e.target.value
                 if (v === 'custom') {
@@ -727,6 +734,7 @@ function GeneralTab({
             <button
               className="btn ghost"
               style={{ marginLeft: 8 }}
+              disabled={!settings.soundOnDone}
               onClick={() =>
                 void window.api.pickAudioFile().then((p) => {
                   if (p) save({ doneSound: 'custom', customSoundPath: p })
@@ -737,6 +745,8 @@ function GeneralTab({
               Choose…
             </button>
           )}
+          {/* Preview stays live even when the cue is off, so a sound can be
+              auditioned before enabling the feature. */}
           <button
             className="btn ghost"
             style={{ marginLeft: 8 }}
