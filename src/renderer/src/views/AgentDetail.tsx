@@ -238,7 +238,9 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
           value={reply}
           onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void send()
+            // Ignore the Enter that commits an IME composition (CJK input),
+            // otherwise it sends a half-composed message.
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
           }}
         />
         <button title="Send" onClick={() => void send()} disabled={!canReply}>
