@@ -467,6 +467,7 @@ export default function AgentDetail(): JSX.Element {
   const diff = useAppStore((s) => s.diffs[agentId])
   const ensureTimeline = useAppStore((s) => s.ensureTimeline)
   const loadDiff = useAppStore((s) => s.loadDiff)
+  const agentsLoaded = useAppStore((s) => s.agentIdsByProject[projectId] !== undefined)
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -489,6 +490,13 @@ export default function AgentDetail(): JSX.Element {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [isRunning])
+
+  // Once the project's agents have loaded and this id isn't among them, the
+  // agent was removed (or never existed) — return home instead of hanging on
+  // "Loading…" forever (mirrors LoopDetail's redirect for a missing loop).
+  useEffect(() => {
+    if (agentsLoaded && !agent) navigate(`/project/${projectId}`, { replace: true })
+  }, [agentsLoaded, agent, navigate, projectId])
 
   if (!agent || !project) {
     return (
