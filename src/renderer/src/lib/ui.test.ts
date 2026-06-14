@@ -61,6 +61,9 @@ describe('time helpers', () => {
     expect(timeUntil(NOW + 30_000)).toBe('in <1m')
     expect(timeUntil(NOW + 5 * 60_000)).toBe('in 5m')
     expect(timeUntil(NOW + 2 * 3600_000)).toBe('in 2h')
+    // 5h59m rounds to "in 6h" rather than flooring to "in 5h" (QA-020): a loop
+    // created with an "Every 6 hours" cadence shouldn't immediately read "in 5h".
+    expect(timeUntil(NOW + 6 * 3600_000 - 60_000)).toBe('in 6h')
     expect(timeUntil(NOW + 2 * 24 * 3600_000)).toBe('in 2d')
     expect(timeUntil(NOW - 60_000)).toBe('in <1m') // past clamps to 0
   })

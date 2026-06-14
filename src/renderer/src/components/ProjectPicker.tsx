@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import type { Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
-import { projectColor, projectMark, timeAgo } from '../lib/ui'
+import { onActivate, projectColor, projectMark, timeAgo } from '../lib/ui'
 import { Icon } from './icons'
 
 /**
@@ -25,7 +25,13 @@ export default function ProjectPicker({
   if (projects.length === 0) {
     return (
       <div className="picker">
-        <div className="drop" onClick={() => void browse()}>
+        <div
+          className="drop"
+          role="button"
+          tabIndex={0}
+          onClick={() => void browse()}
+          onKeyDown={onActivate(() => void browse())}
+        >
           <div className="drop-ic">
             <Icon.folderOpen size={26} />
           </div>
