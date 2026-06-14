@@ -9,6 +9,7 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
+import { ModelPicker } from '../components/ModelPicker'
 import { ProviderLogo } from '../components/ProviderLogo'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
@@ -98,7 +99,12 @@ function ModelsTab({
           <span className="hint">used for every agent</span>
         </div>
         <Row label="Default model" desc="The model harnext codes with when you start an agent.">
-          <Sel value={settings.model} onChange={(v) => save({ model: v })} options={models} />
+          <ModelPicker
+            mono
+            value={settings.model}
+            onChange={(v) => save({ model: v })}
+            models={models}
+          />
         </Row>
         <Row label="Edit handling" desc="What the agent may do without asking.">
           <Sel
@@ -144,16 +150,22 @@ function ModelsTab({
               label="Smart model"
               desc="Plans the work and evaluates the diff before it reaches you."
             >
-              <Sel value={settings.smart} onChange={(v) => save({ smart: v })} options={models} />
+              <ModelPicker
+                mono
+                value={settings.smart}
+                onChange={(v) => save({ smart: v })}
+                models={models}
+              />
             </Row>
             <Row
               label="Executor model"
               desc="Does the hands-on editing. A faster, cheaper coder pairs well here."
             >
-              <Sel
+              <ModelPicker
+                mono
                 value={settings.executor}
                 onChange={(v) => save({ executor: v })}
-                options={models}
+                models={models}
               />
             </Row>
             <Row
@@ -470,7 +482,7 @@ function ProviderSetup({
               Pick the default model harnext codes with on {provider.name}. You can change it
               anytime in the Models tab.
             </p>
-            <Sel value={model} onChange={setModel} options={models} />
+            <ModelPicker mono value={model} onChange={setModel} models={models} />
             <div className="wiz-foot">
               <button
                 className="btn ghost"
