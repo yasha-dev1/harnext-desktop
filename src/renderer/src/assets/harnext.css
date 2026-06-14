@@ -3821,3 +3821,123 @@ html[data-density='compact'] .body {
   gap: 9px;
   margin-top: 16px;
 }
+
+/* GitHub-style "Open a pull request" dialog (issue #42) */
+.pr-dialog {
+  width: min(720px, calc(100vw - 48px));
+  padding: 22px 24px 20px;
+}
+.pr-dialog .modal-desc {
+  margin: 12px 0 16px;
+}
+.pr-branchbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pr-into {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tx-2);
+}
+.pr-arrow {
+  color: var(--tx-2);
+  font-size: 15px;
+  margin: 0 2px;
+}
+.pr-base {
+  flex: 0 1 200px;
+  min-width: 120px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+}
+.pr-base:focus {
+  outline: none;
+  border-color: var(--line-2);
+}
+.pr-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 5px 10px;
+  background: var(--p-soft);
+  border: 1px solid var(--p-line);
+  border-radius: 7px;
+  color: var(--p-text);
+  font-size: 12.5px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pr-branch svg {
+  flex: none;
+}
+.pr-dialog textarea {
+  min-height: 190px;
+}
+
+/* spinner used in the header and the submit button */
+.pr-spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid color-mix(in oklab, var(--p-text), transparent 65%);
+  border-top-color: var(--p-text);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pr-rot 0.7s linear infinite;
+}
+.pr-spin.sm {
+  width: 13px;
+  height: 13px;
+  border-color: rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+}
+@keyframes pr-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* skeleton placeholders shown while suggestPR is generating */
+.pr-skel {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-3) 37%, var(--bg-2) 63%);
+  background-size: 400% 100%;
+  animation: pr-shimmer 1.4s ease infinite;
+}
+.pr-skel-input {
+  height: 35px;
+}
+.pr-skel-area {
+  height: 190px;
+}
+.pr-skel-base {
+  flex: 0 1 200px;
+  height: 30px;
+}
+@keyframes pr-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}

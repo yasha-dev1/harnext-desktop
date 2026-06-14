@@ -417,45 +417,62 @@ function OpenPRPanel({
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => !busy && setOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card pr-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               <Icon.branch size={15} />
               Open a pull request
+              {generating && <span className="pr-spin" role="status" aria-label="Generating" />}
             </div>
+
+            {/* base ← compare, like GitHub's open-PR header */}
+            <div className="pr-branchbar">
+              <span className="pr-into">base</span>
+              {generating ? (
+                <span className="pr-skel pr-skel-base" />
+              ) : (
+                <input
+                  className="pr-base"
+                  value={base}
+                  disabled={busy}
+                  placeholder="default branch"
+                  onChange={(e) => setBase(e.target.value)}
+                />
+              )}
+              <span className="pr-arrow" aria-hidden="true">
+                ←
+              </span>
+              <span className="pr-into">compare</span>
+              <span className="pr-branch" title={agent.branch ?? ''}>
+                <Icon.branch size={12} />
+                {agent.branch ?? '(uncommitted)'}
+              </span>
+            </div>
+
             <p className="modal-desc">
               Pushes <code>{agent.branch}</code> to <code>origin</code> and opens a PR via the
               GitHub CLI.
             </p>
-            {generating && (
-              <p className="modal-desc" style={{ color: 'var(--p-text)' }}>
-                <Icon.spark size={12} /> Generating title &amp; description…
-              </p>
-            )}
+
             <label className="modal-field">
               <span>Title</span>
-              <input
-                value={title}
-                disabled={generating || busy}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
-            <label className="modal-field">
-              <span>Base branch</span>
-              <input
-                value={base}
-                disabled={generating || busy}
-                placeholder="repository default branch"
-                onChange={(e) => setBase(e.target.value)}
-              />
+              {generating ? (
+                <span className="pr-skel pr-skel-input" />
+              ) : (
+                <input value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+              )}
             </label>
             <label className="modal-field">
               <span>Description</span>
-              <textarea
-                value={body}
-                rows={4}
-                disabled={generating || busy}
-                onChange={(e) => setBody(e.target.value)}
-              />
+              {generating ? (
+                <span className="pr-skel pr-skel-area" />
+              ) : (
+                <textarea
+                  value={body}
+                  rows={10}
+                  disabled={busy}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              )}
             </label>
             <div className="modal-actions">
               <button className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
@@ -466,8 +483,22 @@ function OpenPRPanel({
                 disabled={busy || generating || !title.trim()}
                 onClick={() => void submit()}
               >
-                <Icon.branch size={14} />
-                {busy ? 'Pushing…' : 'Push & create PR'}
+                {busy ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Creating…
+                  </>
+                ) : generating ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <Icon.branch size={14} />
+                    Create pull request
+                  </>
+                )}
               </button>
             </div>
           </div>
