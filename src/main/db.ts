@@ -182,6 +182,16 @@ export function initDb(): void {
     })()
   }
 
+  // A loop run's placeholder ('review' / "Running…") is reconciled to its real
+  // outcome by an in-memory onSettled callback that doesn't survive a restart.
+  // Reconcile interrupted in-flight runs to 'failed' so they don't show
+  // "Review · Running…" forever. Must run BEFORE the agent update below, since
+  // it keys on the spawning agent still being 'running'.
+  db.prepare(
+    `UPDATE loop_runs SET status = 'failed', summary = 'Interrupted by app shutdown'
+     WHERE status = 'review' AND agent_id IN (SELECT id FROM agents WHERE status = 'running')`
+  ).run()
+
   // Agents left 'running' by a crash/quit can never resume — mark them.
   db.prepare(
     `UPDATE agents SET status = 'failed', error = 'interrupted by app shutdown', updated_at = ? WHERE status = 'running'`
