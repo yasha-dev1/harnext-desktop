@@ -8,6 +8,7 @@ import type {
   DiffFile,
   MessageItem,
   Role,
+  SandboxInfo,
   TimelineItem,
   ToolCallItem,
   WorktreeDiff
@@ -356,6 +357,126 @@ function DiffViewer({
   )
 }
 
+// ── explorer (live preview of the sandbox dev server) ────────────────
+
+function Explorer({ sandbox }: { sandbox: SandboxInfo }): JSX.Element {
+  const ports = sandbox.ports
+  const [selected, setSelected] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  // Default to the primary service; honour the user's pick once they switch.
+  const url =
+    ports.find((p) => p.service === selected)?.url ?? sandbox.primaryUrl ?? ports[0]?.url ?? null
+
+  if (sandbox.status === 'preparing') {
+    return (
+      <div className="exp-empty">
+        <span className="stream-dots">
+          <i />
+          <i />
+          <i />
+        </span>
+        Starting the environment…
+      </div>
+    )
+  }
+  if (sandbox.status === 'failed') {
+    return (
+      <div className="exp-empty">
+        <Icon.alert size={18} />
+        The sandbox failed to start — see the error above the conversation.
+      </div>
+    )
+  }
+  if (!url) {
+    return (
+      <div className="exp-empty">
+        <Icon.eye size={18} />
+        No forwarded services to preview.
+      </div>
+    )
+  }
+
+  return (
+    <div className="explorer">
+      <div className="exp-bar">
+        {ports.length > 1 && (
+          <span className="exp-svc">
+            {ports.map((p) => (
+              <button
+                key={p.service}
+                className={p.url === url ? 'active' : ''}
+                onClick={() => setSelected(p.service)}
+              >
+                {p.service}
+              </button>
+            ))}
+          </span>
+        )}
+        <span className="exp-url">{url}</span>
+        <button className="exp-iconbtn" title="Reload" onClick={() => setReloadKey((k) => k + 1)}>
+          <Icon.refresh size={14} />
+        </button>
+        <button
+          className="exp-iconbtn"
+          title="Open in browser"
+          onClick={() => void window.api.openExternal(url)}
+        >
+          <Icon.external size={14} />
+        </button>
+      </div>
+      <webview key={`${url}#${reloadKey}`} className="exp-frame" src={url} />
+    </div>
+  )
+}
+
+function RightPane({
+  agent,
+  diff,
+  sandbox,
+  onCollapse
+}: {
+  agent: AgentMeta
+  diff: WorktreeDiff | undefined
+  sandbox: SandboxInfo | undefined
+  // Forwarded to the diff header / tab bar so the pane can be collapsed.
+  onCollapse?: () => void
+}): JSX.Element {
+  const [tab, setTab] = useState<'diff' | 'preview'>('diff')
+  // Only surface the Preview tab when this agent actually has a sandbox.
+  if (!sandbox || sandbox.status === 'off')
+    return <DiffViewer agent={agent} diff={diff} onCollapse={onCollapse} />
+  const dotCls =
+    sandbox.status === 'preparing' ? ' preparing' : sandbox.status === 'failed' ? ' failed' : ''
+  return (
+    <div className="rightpane">
+      <div className="rp-tabs">
+        <button className={tab === 'diff' ? 'active' : ''} onClick={() => setTab('diff')}>
+          <Icon.diff size={14} />
+          Diff
+        </button>
+        <button className={tab === 'preview' ? 'active' : ''} onClick={() => setTab('preview')}>
+          <Icon.eye size={14} />
+          Preview
+          <span className={'rp-dot' + dotCls} />
+        </button>
+        {onCollapse && (
+          <button
+            className="diff-collapse rp-collapse"
+            onClick={onCollapse}
+            title="Collapse diff pane"
+            aria-label="Collapse diff pane"
+          >
+            <Icon.chevronR size={16} />
+          </button>
+        )}
+      </div>
+      <div className="rp-body">
+        {tab === 'diff' ? <DiffViewer agent={agent} diff={diff} /> : <Explorer sandbox={sandbox} />}
+      </div>
+    </div>
+  )
+}
+
 // ── actions ──────────────────────────────────────────────────────────
 
 function OpenPRPanel({
@@ -429,45 +550,62 @@ function OpenPRPanel({
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => !busy && setOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card pr-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               <Icon.branch size={15} />
               Open a pull request
+              {generating && <span className="pr-spin" role="status" aria-label="Generating" />}
             </div>
+
+            {/* base ← compare, like GitHub's open-PR header */}
+            <div className="pr-branchbar">
+              <span className="pr-into">base</span>
+              {generating ? (
+                <span className="pr-skel pr-skel-base" />
+              ) : (
+                <input
+                  className="pr-base"
+                  value={base}
+                  disabled={busy}
+                  placeholder="default branch"
+                  onChange={(e) => setBase(e.target.value)}
+                />
+              )}
+              <span className="pr-arrow" aria-hidden="true">
+                ←
+              </span>
+              <span className="pr-into">compare</span>
+              <span className="pr-branch" title={agent.branch ?? ''}>
+                <Icon.branch size={12} />
+                {agent.branch ?? '(uncommitted)'}
+              </span>
+            </div>
+
             <p className="modal-desc">
               Pushes <code>{agent.branch}</code> to <code>origin</code> and opens a PR via the
               GitHub CLI.
             </p>
-            {generating && (
-              <p className="modal-desc" style={{ color: 'var(--p-text)' }}>
-                <Icon.spark size={12} /> Generating title &amp; description…
-              </p>
-            )}
+
             <label className="modal-field">
               <span>Title</span>
-              <input
-                value={title}
-                disabled={generating || busy}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
-            <label className="modal-field">
-              <span>Base branch</span>
-              <input
-                value={base}
-                disabled={generating || busy}
-                placeholder="repository default branch"
-                onChange={(e) => setBase(e.target.value)}
-              />
+              {generating ? (
+                <span className="pr-skel pr-skel-input" />
+              ) : (
+                <input value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+              )}
             </label>
             <label className="modal-field">
               <span>Description</span>
-              <textarea
-                value={body}
-                rows={4}
-                disabled={generating || busy}
-                onChange={(e) => setBody(e.target.value)}
-              />
+              {generating ? (
+                <span className="pr-skel pr-skel-area" />
+              ) : (
+                <textarea
+                  value={body}
+                  rows={10}
+                  disabled={busy}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              )}
             </label>
             <div className="modal-actions">
               <button className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
@@ -478,8 +616,22 @@ function OpenPRPanel({
                 disabled={busy || generating || !title.trim()}
                 onClick={() => void submit()}
               >
-                <Icon.branch size={14} />
-                {busy ? 'Pushing…' : 'Push & create PR'}
+                {busy ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Creating…
+                  </>
+                ) : generating ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <Icon.branch size={14} />
+                    Create pull request
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -618,11 +770,13 @@ const SPLIT_COLLAPSED_KEY = 'harnext.detailSplit.collapsed'
 function SplitView({
   agent,
   timeline,
-  diff
+  diff,
+  sandbox
 }: {
   agent: AgentMeta
   timeline: TimelineItem[]
   diff: WorktreeDiff | undefined
+  sandbox: SandboxInfo | undefined
 }): JSX.Element {
   const colsRef = useRef<HTMLDivElement>(null)
   const [leftWidth, setLeftWidth] = useState(() => {
@@ -691,7 +845,12 @@ function SplitView({
             onDoubleClick={() => setCollapsed(true)}
             title="Drag to resize · double-click to collapse"
           />
-          <DiffViewer agent={agent} diff={diff} onCollapse={() => setCollapsed(true)} />
+          <RightPane
+            agent={agent}
+            diff={diff}
+            sandbox={sandbox}
+            onCollapse={() => setCollapsed(true)}
+          />
         </>
       )}
     </div>
@@ -710,8 +869,10 @@ export default function AgentDetail(): JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const timeline = useAppStore((s) => s.timelines[agentId])
   const diff = useAppStore((s) => s.diffs[agentId])
+  const sandbox = useAppStore((s) => s.sandboxes[agentId])
   const ensureTimeline = useAppStore((s) => s.ensureTimeline)
   const loadDiff = useAppStore((s) => s.loadDiff)
+  const loadSandbox = useAppStore((s) => s.loadSandbox)
   const agentsLoaded = useAppStore((s) => s.agentIdsByProject[projectId] !== undefined)
 
   const [actionError, setActionError] = useState<string | null>(null)
@@ -727,7 +888,8 @@ export default function AgentDetail(): JSX.Element {
   useEffect(() => {
     void ensureTimeline(agentId)
     void loadDiff(agentId)
-  }, [agentId, ensureTimeline, loadDiff])
+    void loadSandbox(agentId)
+  }, [agentId, ensureTimeline, loadDiff, loadSandbox])
 
   const isRunning = agent?.status === 'running'
   useEffect(() => {
@@ -814,7 +976,7 @@ export default function AgentDetail(): JSX.Element {
           />
         </div>
       </div>
-      <SplitView agent={agent} timeline={timeline ?? []} diff={diff} />
+      <SplitView agent={agent} timeline={timeline ?? []} diff={diff} sandbox={sandbox} />
     </div>
   )
 }

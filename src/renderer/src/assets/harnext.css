@@ -1154,6 +1154,12 @@ body.col-resizing {
   color: var(--tx-0);
   background: var(--bg-2);
 }
+/* collapse control living in the sandbox tab bar — pushed to the far right */
+.rp-tabs .rp-collapse {
+  margin-left: auto;
+  width: 26px;
+  padding: 0;
+}
 .thread {
   border-right: 1px solid var(--line);
   padding: 18px 20px 32px;
@@ -1163,6 +1169,154 @@ body.col-resizing {
   background: var(--bg-1);
   display: flex;
   flex-direction: column;
+}
+
+/* right pane: diff / preview tabs + explorer */
+.detail-cols > .rightpane {
+  overflow: hidden;
+}
+.rightpane {
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+}
+.rp-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.rp-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--tx-2);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+}
+.rp-tabs button.active {
+  background: var(--bg-0);
+  color: var(--tx-1);
+  border-color: var(--line);
+}
+.rp-tabs .rp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.rp-tabs .rp-dot.preparing {
+  background: var(--primary);
+}
+.rp-tabs .rp-dot.failed {
+  background: var(--err);
+}
+.rp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rp-body .diffwrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.explorer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.exp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.exp-svc {
+  display: inline-flex;
+  gap: 4px;
+}
+.exp-svc button {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--tx-2);
+  cursor: pointer;
+}
+.exp-svc button.active {
+  background: var(--bg-0);
+  color: var(--tx-1);
+}
+.exp-url {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--tx-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exp-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--tx-2);
+  cursor: pointer;
+}
+.exp-iconbtn:hover {
+  color: var(--tx-1);
+  background: var(--bg-0);
+}
+.exp-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.exp-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--tx-3);
+  font-size: 12.5px;
+  padding: 24px;
+  text-align: center;
+}
+
+/* editable path / file field in settings (input + button) */
+.path-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.path-field .field {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.path-field .btn {
+  flex: 0 0 auto;
 }
 
 /* thread / timeline */
@@ -3899,4 +4053,124 @@ body.col-resizing {
   justify-content: flex-end;
   gap: 9px;
   margin-top: 16px;
+}
+
+/* GitHub-style "Open a pull request" dialog (issue #42) */
+.pr-dialog {
+  width: min(720px, calc(100vw - 48px));
+  padding: 22px 24px 20px;
+}
+.pr-dialog .modal-desc {
+  margin: 12px 0 16px;
+}
+.pr-branchbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pr-into {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tx-2);
+}
+.pr-arrow {
+  color: var(--tx-2);
+  font-size: 15px;
+  margin: 0 2px;
+}
+.pr-base {
+  flex: 0 1 200px;
+  min-width: 120px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+}
+.pr-base:focus {
+  outline: none;
+  border-color: var(--line-2);
+}
+.pr-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 5px 10px;
+  background: var(--p-soft);
+  border: 1px solid var(--p-line);
+  border-radius: 7px;
+  color: var(--p-text);
+  font-size: 12.5px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pr-branch svg {
+  flex: none;
+}
+.pr-dialog textarea {
+  min-height: 190px;
+}
+
+/* spinner used in the header and the submit button */
+.pr-spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid color-mix(in oklab, var(--p-text), transparent 65%);
+  border-top-color: var(--p-text);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pr-rot 0.7s linear infinite;
+}
+.pr-spin.sm {
+  width: 13px;
+  height: 13px;
+  border-color: rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+}
+@keyframes pr-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* skeleton placeholders shown while suggestPR is generating */
+.pr-skel {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-3) 37%, var(--bg-2) 63%);
+  background-size: 400% 100%;
+  animation: pr-shimmer 1.4s ease infinite;
+}
+.pr-skel-input {
+  height: 35px;
+}
+.pr-skel-area {
+  height: 190px;
+}
+.pr-skel-base {
+  flex: 0 1 200px;
+  height: 30px;
+}
+@keyframes pr-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
 }

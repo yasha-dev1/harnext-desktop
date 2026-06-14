@@ -3,7 +3,11 @@ import { useParams } from 'react-router-dom'
 import type { JSX, ReactNode } from 'react'
 import type {
   AppSettings,
+  DockerStatus,
+  EnvOverrides,
   PermissionMode,
+  Project,
+  ProjectEnvConfig,
   ProviderOption,
   ProviderVerifyResult
 } from '@shared/types'
@@ -653,6 +657,58 @@ function ProvidersTab({
   )
 }
 
+function PathField({
+  value,
+  placeholder,
+  onSave
+}: {
+  value: string
+  placeholder?: string
+  onSave: (v: string) => void
+}): JSX.Element {
+  const [v, setV] = useState(value)
+  // Re-sync the field when the saved value changes externally (adjust-on-render).
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    setV(value)
+  }
+  const commit = (next: string): void => {
+    const t = next.trim()
+    if (t && t !== value) onSave(t)
+  }
+  const browse = async (): Promise<void> => {
+    const dir = await window.api.pickDirectory()
+    if (dir) {
+      setV(dir)
+      onSave(dir)
+    }
+  }
+  return (
+    <span className="path-field">
+      <span className="field">
+        <span className="field-ic">
+          <Icon.folder size={15} />
+        </span>
+        <input
+          type="text"
+          spellCheck={false}
+          value={v}
+          placeholder={placeholder}
+          onChange={(e) => setV(e.target.value)}
+          onBlur={() => commit(v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit(v)
+          }}
+        />
+      </span>
+      <button className="btn ghost" onClick={() => void browse()}>
+        Browse
+      </button>
+    </span>
+  )
+}
+
 function GeneralTab({
   settings,
   save
@@ -765,12 +821,14 @@ function GeneralTab({
         </div>
         <Row
           label="Worktree location"
-          desc="Each agent gets its own checkout here, isolated from your working copy."
+          desc="New agents get their own checkout here, isolated from your working copy."
+          col
         >
-          <span className="tag">
-            <Icon.folder size={13} />
-            <b>~/.harnext-desktop/worktrees</b>
-          </span>
+          <PathField
+            value={settings.worktreeRoot}
+            placeholder="~/.harnext-desktop/worktrees"
+            onSave={(v) => save({ worktreeRoot: v })}
+          />
         </Row>
         <Row label="Branch prefix" desc="Agent branches are namespaced with this prefix.">
           <span className="tag">
@@ -837,6 +895,198 @@ function AppearanceTab({
   )
 }
 
+function DockerLine({ ok, label, bad }: { ok: boolean; label: string; bad?: string }): JSX.Element {
+  return (
+    <span className={'spill sm ' + (ok ? 'st-done' : 'st-failed')}>
+      <span className="sdot" />
+      {ok ? label : (bad ?? label)}
+    </span>
+  )
+}
+
+function EnvironmentTab({
+  project,
+  dockerStatus,
+  detect,
+  setEnvConfig,
+  setOverrides
+}: {
+  project: Project
+  dockerStatus: DockerStatus | null
+  detect: () => Promise<void>
+  setEnvConfig: (patch: Partial<ProjectEnvConfig>) => void
+  setOverrides: (patch: EnvOverrides) => Promise<void>
+}): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const env = project.envConfig
+  const viable = !!env && env.runtime === 'compose' && !env.detectError && env.services.length > 0
+  const primary = env?.exposed.find((e) => e.primary)?.service ?? ''
+
+  // Editable compose-file list (comma-separated, relative to the project root).
+  const detectedFiles = (env?.composeFiles ?? []).join(', ')
+  const [composeInput, setComposeInput] = useState(detectedFiles)
+  // Re-sync the input when detection changes the files (adjust-on-render).
+  const [lastDetected, setLastDetected] = useState(detectedFiles)
+  if (detectedFiles !== lastDetected) {
+    setLastDetected(detectedFiles)
+    setComposeInput(detectedFiles)
+  }
+
+  const run = async (fn: () => Promise<void>): Promise<void> => {
+    setBusy(true)
+    try {
+      await fn()
+    } finally {
+      setBusy(false)
+    }
+  }
+  const applyCompose = (): Promise<void> =>
+    run(() =>
+      setOverrides({
+        composeFiles: composeInput
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      })
+    )
+
+  const DetectBtn = (
+    <button className="btn ghost sm" onClick={() => void run(detect)} disabled={busy}>
+      <Icon.refresh size={13} className={busy ? 'wiz-spin' : undefined} />
+      {busy ? 'Working…' : env ? 'Re-detect' : 'Detect'}
+    </button>
+  )
+
+  return (
+    <div className="set-stack">
+      <div className="set-card">
+        <div className="set-card-head">
+          <Icon.layers size={15} />
+          <h3>Docker sandbox</h3>
+          <span className="hint">isolated environment per worktree · recommended</span>
+        </div>
+        <Row
+          label="Run agents in a Docker sandbox"
+          desc="Each worktree boots this project's docker compose stack on its own ports, so the agent builds and runs the app in a clean, isolated environment. Turn off to run on the host exactly as before."
+        >
+          {viable ? (
+            <Sw on={!!env?.enabled} onChange={(v) => setEnvConfig({ enabled: v })} />
+          ) : (
+            <span className="tag muted">Unavailable</span>
+          )}
+        </Row>
+        {env?.detectError && (
+          <div className="prov-warn">
+            <Icon.alert size={15} />
+            <div>{env.detectError}</div>
+            {DetectBtn}
+          </div>
+        )}
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-head">
+          <Icon.cube size={15} />
+          <h3>Compose configuration</h3>
+          <span className="spacer" />
+          {DetectBtn}
+        </div>
+        <Row
+          label="Compose file(s)"
+          desc="Comma-separated, relative to the project root. Leave blank to auto-detect. Must be committed for agent worktrees to include it."
+          col
+        >
+          <span className="path-field">
+            <span className="field">
+              <span className="field-ic">
+                <Icon.file size={15} />
+              </span>
+              <input
+                type="text"
+                spellCheck={false}
+                value={composeInput}
+                placeholder="docker-compose.yml"
+                onChange={(e) => setComposeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void applyCompose()
+                }}
+              />
+            </span>
+            <button
+              className="btn ghost"
+              disabled={busy || composeInput === detectedFiles}
+              onClick={() => void applyCompose()}
+            >
+              Apply
+            </button>
+          </span>
+        </Row>
+        {viable && env && (
+          <>
+            <Row
+              label="Workspace service"
+              desc="Runs the agent's shell; the worktree is bind-mounted here."
+            >
+              <Sel
+                value={env.workspaceService ?? ''}
+                onChange={(v) => void run(() => setOverrides({ workspaceService: v }))}
+                options={env.services.map((s) => s.name)}
+              />
+            </Row>
+            {env.exposed.length > 0 && (
+              <Row label="Preview service" desc="Opened in the explorer when you view an agent.">
+                <Sel
+                  value={primary}
+                  onChange={(v) => void run(() => setOverrides({ primaryService: v }))}
+                  options={env.exposed.map((e) => e.service)}
+                />
+              </Row>
+            )}
+            {env.services.map((s) => (
+              <Row
+                key={s.name}
+                label={s.name}
+                desc={s.image ?? (s.build ? 'built from source' : undefined)}
+              >
+                <span className="tag">{s.build ? 'build' : 'image'}</span>
+                {s.mountsSource && <span className="tag">source</span>}
+                {s.ports.length > 0 && <span className="tag">:{s.ports.join(' :')}</span>}
+                {s.hasHealthcheck && <span className="tag">health</span>}
+                {s.name === env.workspaceService && (
+                  <span className="spill st-done sm">
+                    <span className="sdot" />
+                    workspace
+                  </span>
+                )}
+              </Row>
+            ))}
+          </>
+        )}
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-head">
+          <Icon.terminal size={15} />
+          <h3>Docker on this machine</h3>
+        </div>
+        <Row label="Engine" desc={dockerStatus?.version ?? undefined}>
+          <DockerLine ok={!!dockerStatus?.installed} label="Installed" bad="Not installed" />
+        </Row>
+        <Row label="Compose" desc="Compose v2 (the `docker compose` command) is required.">
+          <DockerLine
+            ok={dockerStatus?.composeFlavor === 'v2'}
+            label="v2"
+            bad={dockerStatus?.composeFlavor === 'v1' ? 'v1 (upgrade needed)' : 'Missing'}
+          />
+        </Row>
+        <Row label="Daemon">
+          <DockerLine ok={!!dockerStatus?.daemonRunning} label="Running" bad="Not running" />
+        </Row>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings(): JSX.Element {
   const { projectId: projectIdParam } = useParams()
   const projectId = Number(projectIdParam)
@@ -845,6 +1095,11 @@ export default function Settings(): JSX.Element {
   const saveSettings = useAppStore((s) => s.saveSettings)
   const providerModels = useAppStore((s) => s.providerModels)
   const loadProviderModels = useAppStore((s) => s.loadProviderModels)
+  const dockerStatus = useAppStore((s) => s.dockerStatus)
+  const loadDockerStatus = useAppStore((s) => s.loadDockerStatus)
+  const detectProjectEnv = useAppStore((s) => s.detectProjectEnv)
+  const setProjectEnvConfig = useAppStore((s) => s.setProjectEnvConfig)
+  const setProjectEnvOverrides = useAppStore((s) => s.setProjectEnvOverrides)
   const [tab, setTab] = useState('models')
   const [providers, setProviders] = useState<ProviderOption[]>([])
 
@@ -852,6 +1107,9 @@ export default function Settings(): JSX.Element {
     void window.api.providers.list().then(setProviders)
   }
   useEffect(refreshProviders, [])
+  useEffect(() => {
+    void loadDockerStatus()
+  }, [loadDockerStatus])
 
   const provider = settings?.provider
   useEffect(() => {
@@ -866,6 +1124,7 @@ export default function Settings(): JSX.Element {
   const TABS: { id: string; label: string; ic: IconName }[] = [
     { id: 'models', label: 'Models', ic: 'loop' },
     { id: 'providers', label: 'Providers', ic: 'cube' },
+    { id: 'environment', label: 'Environment', ic: 'layers' },
     { id: 'general', label: 'General', ic: 'branch' },
     { id: 'appearance', label: 'Appearance', ic: 'spark' }
   ]
@@ -906,6 +1165,15 @@ export default function Settings(): JSX.Element {
           save={save}
           providers={providers}
           refresh={refreshProviders}
+        />
+      )}
+      {tab === 'environment' && (
+        <EnvironmentTab
+          project={project}
+          dockerStatus={dockerStatus}
+          detect={() => detectProjectEnv(project.id)}
+          setEnvConfig={(patch) => setProjectEnvConfig(project.id, patch)}
+          setOverrides={(patch) => setProjectEnvOverrides(project.id, patch)}
         />
       )}
       {tab === 'general' && <GeneralTab settings={settings} save={save} />}
