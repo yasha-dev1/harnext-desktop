@@ -356,7 +356,9 @@ function ProviderSetup({
                       setResult(null)
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && key.trim() && !busy) void verify()
+                      // Don't treat the IME composition-commit Enter as "verify".
+                      if (e.key === 'Enter' && !e.nativeEvent.isComposing && key.trim() && !busy)
+                        void verify()
                     }}
                   />
                 </div>
