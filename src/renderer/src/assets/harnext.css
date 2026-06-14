@@ -902,6 +902,13 @@ html[data-density='compact'] .body {
 .ctl-sel select:hover {
   border-color: var(--line-2);
 }
+.ctl-sel select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ctl-sel select:disabled:hover {
+  border-color: var(--line);
+}
 .ctl-sel select {
   min-width: 90px;
 }
@@ -1991,6 +1998,10 @@ html[data-density='compact'] .body {
 }
 .set-rl {
   min-width: 0;
+}
+/* Row whose parent toggle is off — reads as inactive. */
+.set-rl.dim {
+  opacity: 0.5;
 }
 .set-label {
   font-size: 13px;
