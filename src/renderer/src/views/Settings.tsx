@@ -212,7 +212,16 @@ function ProvidersTab({
                 key={p.id}
                 className={'prov' + (settings.provider === p.id ? ' on' : '')}
                 onClick={() => {
-                  save({ provider: p.id, model: p.defaultModel })
+                  // Keep a model selection only if it's valid for the new
+                  // provider, otherwise fall back to its default — applied to
+                  // model, smart and executor so Goal mode stays valid too.
+                  const keep = (m: string): string => (p.models.includes(m) ? m : p.defaultModel)
+                  save({
+                    provider: p.id,
+                    model: p.defaultModel,
+                    smart: keep(settings.smart),
+                    executor: keep(settings.executor)
+                  })
                   setSaved(false)
                 }}
               >
