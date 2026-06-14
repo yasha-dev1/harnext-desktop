@@ -8,19 +8,33 @@ import { Icon } from './icons'
 function AgentCard({
   agent,
   active,
-  onClick
+  onClick,
+  onDiscard
 }: {
   agent: AgentMeta
   active: boolean
   onClick: () => void
+  // When provided, a hover/focus-revealed trash control is shown.
+  onDiscard?: () => void
 }): JSX.Element {
   const s = STATUS[agent.status]
   return (
-    <button
+    // A div (not a button) so the discard control can be a real nested button
+    // without invalid button-in-button markup; keyboard support is added back.
+    <div
       className={
         'agent-card' + (agent.status === 'running' ? ' running' : '') + (active ? ' active' : '')
       }
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
     >
       <div className="agent-top">
         <span
@@ -28,12 +42,29 @@ function AgentCard({
           style={{ color: `var(--${DOT_COLOR[agent.status]})` }}
         />
         <span className="agent-title">{agent.title}</span>
+        {onDiscard && (
+          <button
+            className="agent-discard"
+            title="Discard agent"
+            aria-label="Discard agent"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDiscard()
+            }}
+          >
+            <Icon.trash size={13} />
+          </button>
+        )}
       </div>
       <div className="agent-meta">
-        <span className="agent-branch">
-          <Icon.branch size={12} />
-          {(agent.branch ?? agent.progress).replace('agent/', '')}
-        </span>
+        {agent.branch ? (
+          <span className="agent-branch">
+            <Icon.branch size={12} />
+            {agent.branch.replace('agent/', '')}
+          </span>
+        ) : (
+          <span className="agent-branch">{agent.progress}</span>
+        )}
         {(agent.add > 0 || agent.del > 0) && (
           <span className="agent-diffstat">
             <span className="add">+{agent.add}</span>
@@ -41,7 +72,7 @@ function AgentCard({
           </span>
         )}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -51,10 +82,20 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
   const settingsMatch = useMatch('/project/:projectId/settings')
   const loopsMatch = useMatch('/project/:projectId/loops/*')
   const loopsRootMatch = useMatch('/project/:projectId/loops')
+  const homeMatch = useMatch({ path: '/project/:projectId', end: true })
 
   const agentIds = useAppStore((s) => s.agentIdsByProject[project.id]) ?? []
   const agents = useAppStore((s) => s.agents)
   const loops = useAppStore((s) => s.loopsByProject[project.id]) ?? []
+  const discardAgent = useAppStore((s) => s.discardAgent)
+
+  const handleDiscard = (a: AgentMeta): void => {
+    if (!confirm('Discard this agent? Its worktree and branch are deleted.')) return
+    void discardAgent(a.id).then(() => {
+      // If the discarded agent is the one open in the detail view, go home.
+      if (agentId === a.id) navigate(`/project/${project.id}`)
+    })
+  }
 
   const list = agentIds.map((id) => agents[id]).filter(Boolean)
   const running = list.filter((a) => ['running', 'review', 'input', 'paused'].includes(a.status))
@@ -88,6 +129,13 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
 
       <div className="aside-scroll">
         <button
+          className={'aside-menu' + (homeMatch ? ' active' : '')}
+          onClick={() => navigate(`/project/${project.id}`)}
+        >
+          <Icon.plus size={16} />
+          <span className="aside-menu-label">New Task</span>
+        </button>
+        <button
           className={'aside-menu' + (loopsMatch || loopsRootMatch ? ' active' : '')}
           onClick={() => navigate(`/project/${project.id}/loops`)}
         >
@@ -114,6 +162,7 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
             agent={a}
             active={agentId === a.id}
             onClick={() => navigate(`/project/${project.id}/agent/${a.id}`)}
+            onDiscard={() => handleDiscard(a)}
           />
         ))}
 

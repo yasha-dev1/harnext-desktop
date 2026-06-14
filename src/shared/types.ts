@@ -178,12 +178,16 @@ export interface WorktreeDiff {
 export type LoopType = 'interval' | 'daily' | 'weekly'
 
 export interface LoopConfig {
-  /** hours, for interval loops */
+  /** hours, for interval loops (legacy — prefer intervalMinutes) */
   intervalHours?: number
-  /** "HH:MM", for daily/weekly loops */
+  /** minutes between runs, for interval loops (supports sub-hour, e.g. 30) */
+  intervalMinutes?: number
+  /** "HH:MM" (any minute), for daily/weekly loops */
   time?: string
-  /** 0 = Monday … 6 = Sunday, for weekly loops */
+  /** 0 = Monday … 6 = Sunday, for weekly loops (legacy — prefer days) */
   day?: number
+  /** weekdays a weekly loop fires on (0 = Monday … 6 = Sunday) */
+  days?: number[]
   /** Model this loop pins, independent of the global default. Unset = follow default. */
   model?: string
   /** Provider this loop pins. Unset = follow the global default provider. */
@@ -227,6 +231,10 @@ export interface AppSettings {
   mode: PermissionMode
   editor: string
   openOnDone: boolean
+  soundOnDone: boolean
+  doneSound: string
+  /** Absolute path to a user-chosen audio file, used when doneSound === 'custom'. */
+  customSoundPath: string
   evalLoop: boolean
   /** Where per-agent git worktrees are created. Default: ~/.harnext-desktop/worktrees */
   worktreeRoot: string
@@ -307,6 +315,10 @@ export interface DesktopApi {
   pickDirectory(): Promise<string | null>
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>
+  /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
+  pickAudioFile(): Promise<string | null>
+  /** Read a local audio file as a data URL so the renderer can play it. */
+  readSound(path: string): Promise<string | null>
   settings: {
     get(): Promise<AppSettings>
     set(patch: Partial<AppSettings>): Promise<AppSettings>
@@ -346,6 +358,8 @@ export interface DesktopApi {
     timeline(agentId: string): Promise<TimelineItem[]>
     diff(agentId: string): Promise<WorktreeDiff>
     merge(agentId: string): Promise<void>
+    suggestPR(agentId: string): Promise<{ title: string; base: string; body: string }>
+    openPR(agentId: string, opts: { base?: string; title?: string; body?: string }): Promise<string>
     discard(agentId: string): Promise<void>
     openEditor(agentId: string): Promise<void>
     stopAll(): Promise<void>

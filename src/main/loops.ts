@@ -1,23 +1,16 @@
 import type { AgentPush, LoopConfig, LoopInput, LoopMeta, LoopType } from '../shared/types'
+import { buildCadence, intervalMinutes, weekdays } from '../shared/schedule'
 import type { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 
 const TICK_MS = 30_000
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export function buildCadence(type: LoopType, config: LoopConfig): string {
-  if (type === 'interval') {
-    const h = config.intervalHours ?? 6
-    return h === 1 ? 'Every hour' : `Every ${h} hours`
-  }
-  if (type === 'daily') return `Every day · ${config.time ?? '09:00'}`
-  return `Weekly · ${DAY_NAMES[config.day ?? 0]} ${config.time ?? '09:00'}`
-}
+export { buildCadence }
 
 /** Next fire time strictly after `from`. */
 export function computeNextRun(type: LoopType, config: LoopConfig, from: number): number {
   if (type === 'interval') {
-    return from + (config.intervalHours ?? 6) * 3600_000
+    return from + intervalMinutes(config) * 60_000
   }
   const [hh, mm] = (config.time ?? '09:00').split(':').map((n) => parseInt(n, 10))
   const next = new Date(from)
@@ -26,9 +19,10 @@ export function computeNextRun(type: LoopType, config: LoopConfig, from: number)
     if (next.getTime() <= from) next.setDate(next.getDate() + 1)
     return next.getTime()
   }
-  // weekly — config.day: 0 = Monday … 6 = Sunday; JS getDay(): 0 = Sunday
-  const targetDow = ((config.day ?? 0) + 1) % 7
-  while (next.getDay() !== targetDow || next.getTime() <= from) {
+  // weekly — config days 0 = Monday … 6 = Sunday; JS getDay(): 0 = Sunday.
+  // Advance day-by-day to the soonest future time matching any selected weekday.
+  const targetDows = new Set(weekdays(config).map((d) => (d + 1) % 7))
+  while (!targetDows.has(next.getDay()) || next.getTime() <= from) {
     next.setDate(next.getDate() + 1)
     next.setHours(hh, mm, 0, 0)
   }

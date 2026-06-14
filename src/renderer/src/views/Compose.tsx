@@ -4,29 +4,7 @@ import type { JSX } from 'react'
 import type { PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
-
-function ModelSelect({
-  value,
-  models,
-  onChange
-}: {
-  value: string
-  models: string[]
-  onChange: (v: string) => void
-}): JSX.Element {
-  const opts = models.includes(value) || !value ? models : [value, ...models]
-  return (
-    <span className="ctl-sel mono">
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {opts.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-    </span>
-  )
-}
+import { ModelPicker } from '../components/ModelPicker'
 
 const QUICK: { ic: IconName; t: string }[] = [
   { ic: 'bolt', t: 'Fix the failing tests' },
@@ -135,7 +113,8 @@ export default function Compose(): JSX.Element {
                   <Icon.brain size={14} />
                   <span className="k">smart</span>
                 </span>
-                <ModelSelect
+                <ModelPicker
+                  mono
                   value={settings.smart}
                   models={models}
                   onChange={(v) => void saveSettings({ smart: v })}
@@ -144,14 +123,16 @@ export default function Compose(): JSX.Element {
                   <Icon.zap size={14} />
                   <span className="k">exec</span>
                 </span>
-                <ModelSelect
+                <ModelPicker
+                  mono
                   value={settings.executor}
                   models={models}
                   onChange={(v) => void saveSettings({ executor: v })}
                 />
               </>
             ) : (
-              <ModelSelect
+              <ModelPicker
+                mono
                 value={settings.model}
                 models={models}
                 onChange={(v) => void saveSettings({ model: v })}

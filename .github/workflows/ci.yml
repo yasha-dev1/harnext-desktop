@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `@harnext/core` is a local sibling package
+      # ("@harnext/core": "file:../harnext/packages/core") that isn't present on
+      # CI runners, so a plain install can't resolve it. Stub it so lint + unit
+      # tests can run. To also enable typecheck / build / integration tests,
+      # replace this step with the real package (e.g. checkout & build the
+      # harnext repo alongside, or publish/vendor it). See #16.
+      - name: Stub @harnext/core (CI placeholder)
+        run: |
+          mkdir -p ../harnext/packages/core
+          printf '%s' '{"name":"@harnext/core","version":"0.0.0","main":"index.js","types":"index.d.ts"}' > ../harnext/packages/core/package.json
+          printf 'module.exports = {}\n' > ../harnext/packages/core/index.js
+          printf 'export {}\n' > ../harnext/packages/core/index.d.ts
+
+      # --ignore-scripts skips the postinstall that rebuilds the native
+      # better-sqlite3 for Electron — not needed for the pure-logic unit tests.
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests + coverage
+        run: npm run test:coverage

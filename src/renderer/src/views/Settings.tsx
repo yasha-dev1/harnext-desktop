@@ -13,6 +13,9 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
+import { ModelPicker } from '../components/ModelPicker'
+import { EditorLogo } from '../components/EditorLogo'
+import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
@@ -34,16 +37,19 @@ function Row({
   label,
   desc,
   children,
-  col
+  col,
+  dim
 }: {
   label: ReactNode
   desc?: ReactNode
   children: ReactNode
   col?: boolean
+  // De-emphasize the label/desc when the row's parent control is off.
+  dim?: boolean
 }): JSX.Element {
   return (
     <div className={'set-row' + (col ? ' col' : '')}>
-      <div className="set-rl">
+      <div className={'set-rl' + (dim ? ' dim' : '')}>
         <div className="set-label">{label}</div>
         {desc && <div className="set-desc">{desc}</div>}
       </div>
@@ -102,7 +108,12 @@ function ModelsTab({
           <span className="hint">used for every agent</span>
         </div>
         <Row label="Default model" desc="The model harnext codes with when you start an agent.">
-          <Sel value={settings.model} onChange={(v) => save({ model: v })} options={models} />
+          <ModelPicker
+            mono
+            value={settings.model}
+            onChange={(v) => save({ model: v })}
+            models={models}
+          />
         </Row>
         <Row label="Edit handling" desc="What the agent may do without asking.">
           <Sel
@@ -148,16 +159,22 @@ function ModelsTab({
               label="Smart model"
               desc="Plans the work and evaluates the diff before it reaches you."
             >
-              <Sel value={settings.smart} onChange={(v) => save({ smart: v })} options={models} />
+              <ModelPicker
+                mono
+                value={settings.smart}
+                onChange={(v) => save({ smart: v })}
+                models={models}
+              />
             </Row>
             <Row
               label="Executor model"
               desc="Does the hands-on editing. A faster, cheaper coder pairs well here."
             >
-              <Sel
+              <ModelPicker
+                mono
                 value={settings.executor}
                 onChange={(v) => save({ executor: v })}
-                options={models}
+                models={models}
               />
             </Row>
             <Row
@@ -474,7 +491,7 @@ function ProviderSetup({
               Pick the default model harnext codes with on {provider.name}. You can change it
               anytime in the Models tab.
             </p>
-            <Sel value={model} onChange={setModel} options={models} />
+            <ModelPicker mono value={model} onChange={setModel} models={models} />
             <div className="wiz-foot">
               <button
                 className="btn ghost"
@@ -700,6 +717,9 @@ function GeneralTab({
   save: (p: Partial<AppSettings>) => void
 }): JSX.Element {
   const [stopped, setStopped] = useState(false)
+  // Fall back to the default for a stale/unknown stored id so the controlled
+  // <select> never shows a mismatched option (e.g. a persisted 'bruh').
+  const doneSound = SOUNDS.some((s) => s.id === settings.doneSound) ? settings.doneSound : 'chime'
   return (
     <div className="set-stack">
       <div className="set-card">
@@ -711,13 +731,86 @@ function GeneralTab({
           label="Default editor"
           desc="Opened when you hit “Editor” on an agent — launches the agent's worktree."
         >
-          <Sel value={settings.editor} onChange={(v) => save({ editor: v })} options={EDITORS} />
+          <ModelPicker
+            value={settings.editor}
+            models={EDITORS}
+            onChange={(v) => save({ editor: v })}
+            placeholder="Search editors…"
+            icon={(name) => <EditorLogo name={name} size={15} />}
+          />
         </Row>
         <Row
           label="Open editor when an agent finishes"
           desc="Auto-launch the worktree once an agent is ready for review."
         >
           <Sw on={settings.openOnDone} onChange={(v) => save({ openOnDone: v })} />
+        </Row>
+        <Row
+          label="Play a sound when an agent is ready"
+          desc="An audible cue when an agent finishes and hands back for review."
+        >
+          <Sw on={settings.soundOnDone} onChange={(v) => save({ soundOnDone: v })} />
+        </Row>
+        <Row
+          label="Sound"
+          dim={!settings.soundOnDone}
+          desc={
+            !settings.soundOnDone
+              ? 'Turn on “Play a sound when an agent is ready” to choose a cue.'
+              : settings.doneSound === 'custom'
+                ? settings.customSoundPath
+                  ? `Custom file: ${settings.customSoundPath.split(/[/\\]/).pop()}`
+                  : 'Pick your own audio file to play.'
+                : 'Which sound plays when an agent finishes.'
+          }
+        >
+          <span className="ctl-sel">
+            <select
+              value={doneSound}
+              disabled={!settings.soundOnDone}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'custom') {
+                  void window.api.pickAudioFile().then((p) => {
+                    if (p) save({ doneSound: 'custom', customSoundPath: p })
+                  })
+                } else {
+                  save({ doneSound: v })
+                }
+              }}
+            >
+              {SOUNDS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </span>
+          {settings.doneSound === 'custom' && (
+            <button
+              className="btn ghost"
+              style={{ marginLeft: 8 }}
+              disabled={!settings.soundOnDone}
+              onClick={() =>
+                void window.api.pickAudioFile().then((p) => {
+                  if (p) save({ doneSound: 'custom', customSoundPath: p })
+                })
+              }
+            >
+              <Icon.folder size={13} />
+              Choose…
+            </button>
+          )}
+          {/* Preview stays live even when the cue is off, so a sound can be
+              auditioned before enabling the feature. */}
+          <button
+            className="btn ghost"
+            style={{ marginLeft: 8 }}
+            onClick={() => playSound(doneSound, settings.customSoundPath)}
+          >
+            <Icon.play size={13} />
+            Preview
+          </button>
         </Row>
       </div>
 

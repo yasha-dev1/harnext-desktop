@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import type { JSX } from 'react'
 import type { Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
-import { projectColor, projectMark, timeAgo } from '../lib/ui'
+import { onActivate, projectColor, projectMark, timeAgo } from '../lib/ui'
 import { Icon } from './icons'
 
 /**
@@ -16,16 +17,30 @@ export default function ProjectPicker({
 }): JSX.Element {
   const projects = useAppStore((s) => s.projects)
   const openProjectDialog = useAppStore((s) => s.openProjectDialog)
+  const removeProject = useAppStore((s) => s.removeProject)
+  // The project pending removal (drives the confirm dialog), keyed by id.
+  const [confirmId, setConfirmId] = useState<number | null>(null)
+  const pending = projects.find((p) => p.id === confirmId)
 
   const browse = async (): Promise<void> => {
     const project = await openProjectDialog()
     if (project) onOpen(project)
   }
+  const open = (p: Project): void => {
+    void window.api.projects.touch(p.id)
+    onOpen(p)
+  }
 
   if (projects.length === 0) {
     return (
       <div className="picker">
-        <div className="drop" onClick={() => void browse()}>
+        <div
+          className="drop"
+          role="button"
+          tabIndex={0}
+          onClick={() => void browse()}
+          onKeyDown={onActivate(() => void browse())}
+        >
           <div className="drop-ic">
             <Icon.folderOpen size={26} />
           </div>
@@ -52,13 +67,13 @@ export default function ProjectPicker({
           {projects.map((p) => {
             const color = projectColor(p)
             return (
-              <button
+              <div
                 key={p.id}
                 className="recent-item"
-                onClick={() => {
-                  void window.api.projects.touch(p.id)
-                  onOpen(p)
-                }}
+                role="button"
+                tabIndex={0}
+                onClick={() => open(p)}
+                onKeyDown={onActivate(() => open(p))}
               >
                 <span
                   className="recent-mk"
@@ -71,7 +86,18 @@ export default function ProjectPicker({
                   <div className="recent-pa">{p.path}</div>
                 </div>
                 <span className="recent-time">{timeAgo(p.lastOpenedAt)}</span>
-              </button>
+                <button
+                  className="recent-del"
+                  title={`Remove ${p.name}`}
+                  aria-label={`Remove ${p.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setConfirmId(p.id)
+                  }}
+                >
+                  <Icon.trash size={14} />
+                </button>
+              </div>
             )
           })}
         </div>
@@ -87,6 +113,36 @@ export default function ProjectPicker({
         </span>
         <Icon.folderOpen size={17} />
       </button>
+
+      {pending && (
+        <div className="modal-backdrop" onClick={() => setConfirmId(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              <Icon.trash size={15} />
+              Remove project
+            </div>
+            <p className="modal-desc">
+              Remove <b>{pending.name}</b> from harnext? Its agents and loops are deleted. The
+              folder on disk (<code>{pending.path}</code>) is kept.
+            </p>
+            <div className="modal-actions">
+              <button className="btn ghost" onClick={() => setConfirmId(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  void removeProject(pending.id)
+                  setConfirmId(null)
+                }}
+              >
+                <Icon.trash size={14} />
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

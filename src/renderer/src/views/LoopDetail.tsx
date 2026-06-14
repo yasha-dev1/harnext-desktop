@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
 import type { LoopRun } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
-import { shortModel, timeAgo, timeUntil } from '../lib/ui'
+import { onActivate, shortModel, timeAgo, timeUntil } from '../lib/ui'
 import { useNow } from '../lib/useNow'
 import { Icon } from '../components/icons'
 
@@ -11,7 +11,14 @@ function LoopRunRow({ run, onOpen }: { run: LoopRun; onOpen?: () => void }): JSX
   const cls =
     run.status === 'done' ? 'st-done' : run.status === 'failed' ? 'st-failed' : 'st-review'
   return (
-    <div className="lrun" onClick={onOpen} style={onOpen ? { cursor: 'pointer' } : undefined}>
+    <div
+      className="lrun"
+      onClick={onOpen}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={onActivate(onOpen)}
+      style={onOpen ? { cursor: 'pointer' } : undefined}
+    >
       <span className={'spill sm ' + cls}>
         <span className="sdot" />
         {run.status === 'done' ? 'Done' : run.status === 'failed' ? 'Failed' : 'Review'}

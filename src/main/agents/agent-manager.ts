@@ -22,9 +22,14 @@ import type {
 } from '../../shared/types'
 import * as db from '../db'
 import {
+  commitWorktree,
+  createPullRequest,
   createWorktree,
+  defaultBaseBranch,
   diffFromSnapshots,
+  hasRemote,
   mergeWorktree,
+  pushBranch,
   removeWorktree,
   worktreeDiff
 } from '../git'
@@ -123,6 +128,71 @@ async function generateWorktreeName(
       .replace(/^(agent|feature|feat)\//i, '')
       .trim()
     return name || null
+  } catch {
+    return null
+  }
+}
+
+const PR_DETAILS_PROMPT =
+  'You write GitHub pull request descriptions for a finished coding task. ' +
+  'Given the task and the changes, reply with the PR title on the FIRST line ' +
+  '(concise, imperative, no prefix, no surrounding quotes), then a blank line, ' +
+  'then a short markdown body: a one-sentence summary followed by a "## Changes" ' +
+  'bullet list of what changed and why. Keep it under ~150 words and do not ' +
+  'invent changes that are not in the diff.'
+
+const PR_DETAILS_TIMEOUT_MS = 20_000
+
+/**
+ * Ask the model for a PR title + markdown body from the task and its diff, the
+ * same way {@link generateWorktreeName} suggests a branch name — a minimal,
+ * tool-less single-turn session. Best-effort: returns null on any
+ * error/timeout so the caller can fall back to a simple default.
+ */
+async function generatePrDetails(
+  provider: string,
+  modelId: string,
+  cwd: string,
+  context: string
+): Promise<{ title: string; body: string } | null> {
+  try {
+    const { session } = await createAgentSession({
+      cwd,
+      provider,
+      modelId,
+      systemPrompt: PR_DETAILS_PROMPT,
+      tools: [],
+      skills: [],
+      mcpDisabled: true,
+      compaction: false,
+      maxTurns: 1,
+      quiet: true
+    })
+    let out = ''
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === 'message_end' && isAssistant(event.message)) {
+        out = extractText(event.message)
+      }
+    })
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('pr-details timeout')), PR_DETAILS_TIMEOUT_MS)
+    )
+    try {
+      await Promise.race([session.prompt(context.slice(0, 6000)), timeout])
+    } finally {
+      unsubscribe()
+      void session.dispose()
+    }
+    const text = out.trim()
+    if (!text) return null
+    const nl = text.indexOf('\n')
+    const title = (nl === -1 ? text : text.slice(0, nl))
+      .replace(/^#+\s*/, '')
+      .replace(/^title:\s*/i, '')
+      .replace(/^["']|["']$/g, '')
+      .trim()
+    const body = nl === -1 ? '' : text.slice(nl + 1).trim()
+    return title ? { title, body } : null
   } catch {
     return null
   }
@@ -361,6 +431,88 @@ export class AgentManager {
     removeWorktree(project.path, meta.worktreePath, meta.branch)
     await this.disposeAgent(agentId)
     this.setStatus(agentId, 'done', `Merged into ${project.branch ?? 'HEAD'}`)
+  }
+
+  /**
+   * Commit the agent's worktree, push its branch to origin, and open a pull
+   * request against `base` (defaults to the remote's default branch). Returns
+   * the PR URL. The agent and its branch are kept — this is an alternative to
+   * the local-only `merge()` for teams that integrate via review.
+   */
+  /**
+   * Suggest a PR title + markdown body for a finished agent the same way the
+   * worktree name is generated (a maxTurns:1 model call), plus the repo's
+   * default base branch — so the "Open a pull request" dialog opens pre-filled
+   * instead of blank. Best-effort: falls back to the agent title + a simple body.
+   */
+  async suggestPullRequest(
+    agentId: string
+  ): Promise<{ title: string; base: string; body: string }> {
+    const meta = db.getAgent(agentId, this.isLive(agentId))
+    if (!meta) throw new Error('Agent not found')
+    const project = db.getProject(meta.projectId)
+    if (!project) throw new Error('Project not found')
+    const base = hasRemote(project.path) ? defaultBaseBranch(project.path) : 'main'
+    const fallback = {
+      title: meta.title,
+      base,
+      body: `Opened from the harnext agent “${meta.title}”.`
+    }
+    const settings = db.getSettings()
+    const provider = settings.provider
+    const model = meta.modelId ?? meta.execModel ?? settings.model
+    try {
+      ensureProviderEnv(provider)
+      const cwd = meta.worktreePath ?? project.path
+      const gen = await generatePrDetails(provider, model, cwd, this.buildPrContext(agentId, meta.title))
+      if (gen) return { title: gen.title, base, body: gen.body || fallback.body }
+    } catch {
+      /* best-effort — fall through to the default */
+    }
+    return fallback
+  }
+
+  /** Assemble task + change context for PR-detail generation. */
+  private buildPrContext(agentId: string, fallbackTask: string): string {
+    const timeline = db.getTimeline(agentId)
+    const firstUser = timeline.find((t) => t.kind === 'message' && t.role === 'user')
+    const lastAssistant = [...timeline]
+      .reverse()
+      .find((t) => t.kind === 'message' && t.role !== 'user')
+    const task = (firstUser?.kind === 'message' ? firstUser.content : fallbackTask).slice(0, 1500)
+    const summary =
+      lastAssistant?.kind === 'message' ? lastAssistant.content.slice(0, 1500) : ''
+    const diff = this.getDiff(agentId)
+    const files = diff.files.map((f) => `- ${f.path} (+${f.add}/-${f.del})`).join('\n')
+    return [
+      `Task:\n${task}`,
+      summary ? `What the agent reported doing:\n${summary}` : '',
+      `Files changed (${diff.files.length}, +${diff.add}/-${diff.del}):\n${files || '(none)'}`
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+  }
+
+  async openPullRequest(
+    agentId: string,
+    opts: { base?: string; title?: string; body?: string } = {}
+  ): Promise<string> {
+    const meta = db.getAgent(agentId, this.isLive(agentId))
+    if (!meta) throw new Error('Agent not found')
+    const project = db.getProject(meta.projectId)
+    if (!project) throw new Error('Project not found')
+    if (!meta.worktreePath || !meta.branch) {
+      throw new Error('This agent has no worktree/branch to push.')
+    }
+    if (!hasRemote(project.path)) {
+      throw new Error('This project has no `origin` remote to push to.')
+    }
+    const title = opts.title?.trim() || meta.title
+    const base = opts.base?.trim() || defaultBaseBranch(project.path)
+    const body = opts.body ?? `Opened from the harnext agent “${meta.title}”.`
+    commitWorktree(meta.worktreePath, title)
+    pushBranch(meta.worktreePath, meta.branch)
+    return createPullRequest(project.path, { branch: meta.branch, base, title, body })
   }
 
   async discard(agentId: string): Promise<void> {

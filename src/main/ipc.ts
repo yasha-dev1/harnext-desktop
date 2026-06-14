@@ -1,4 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { readFileSync } from 'node:fs'
+import { extname } from 'node:path'
 import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
 import type {
   AppSettings,
@@ -38,6 +40,37 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       properties: ['openDirectory', 'createDirectory']
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:pickAudioFile', async () => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'] }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('sounds:read', (_e, p: string) => {
+    try {
+      const ext = extname(p).slice(1).toLowerCase()
+      const mime =
+        ext === 'mp3'
+          ? 'audio/mpeg'
+          : ext === 'wav'
+            ? 'audio/wav'
+            : ext === 'ogg' || ext === 'oga'
+              ? 'audio/ogg'
+              : ext === 'm4a' || ext === 'aac'
+                ? 'audio/mp4'
+                : ext === 'flac'
+                  ? 'audio/flac'
+                  : 'application/octet-stream'
+      return `data:${mime};base64,${readFileSync(p).toString('base64')}`
+    } catch {
+      return null
+    }
   })
 
   // settings
@@ -130,13 +163,21 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   ipcMain.handle('agents:timeline', (_e, agentId: string) => db.getTimeline(agentId))
   ipcMain.handle('agents:diff', (_e, agentId: string) => manager.getDiff(agentId))
   ipcMain.handle('agents:merge', (_e, agentId: string) => manager.merge(agentId))
+  ipcMain.handle('agents:suggestPR', (_e, agentId: string) => manager.suggestPullRequest(agentId))
+  ipcMain.handle(
+    'agents:openPR',
+    (_e, agentId: string, opts: { base?: string; title?: string; body?: string }) =>
+      manager.openPullRequest(agentId, opts)
+  )
   ipcMain.handle('agents:discard', (_e, agentId: string) => manager.discard(agentId))
   ipcMain.handle('agents:openEditor', async (_e, agentId: string) => {
     const meta = db.getAgent(agentId, manager.isLive(agentId))
     if (!meta) throw new Error('Agent not found')
     const project = db.getProject(meta.projectId)
     const settings = db.getSettings()
-    await openInEditor(settings.editor, meta.worktreePath ?? project?.path ?? '.')
+    const target = meta.worktreePath ?? project?.path
+    if (!target) throw new Error('No worktree or project path to open.')
+    await openInEditor(settings.editor, target)
   })
   ipcMain.handle('agents:stopAll', () => manager.stopAll())
   ipcMain.handle('agents:sandbox', (_e, agentId: string) => manager.getSandbox(agentId))

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
@@ -16,13 +16,99 @@ export function runGit(
   }
 }
 
+/**
+ * True only when `path` is the *top level* of a git repo. A folder merely
+ * nested inside a repo is not treated as git, so we never create agent
+ * worktrees rooted at an ancestor repo the user didn't open (see #46).
+ */
 export function isGitRepo(path: string): boolean {
-  return runGit(['rev-parse', '--is-inside-work-tree'], path).stdout.trim() === 'true'
+  const top = runGit(['rev-parse', '--show-toplevel'], path)
+  if (top.exit !== 0 || !top.stdout.trim()) return false
+  try {
+    return realpathSync(top.stdout.trim()) === realpathSync(path)
+  } catch {
+    return false
+  }
 }
 
 export function currentBranch(path: string): string | null {
   const r = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], path)
   return r.exit === 0 ? r.stdout.trim() : null
+}
+
+// ── remote / pull requests ───────────────────────────────────────────
+
+/** Whether the repo has the named remote (default `origin`). */
+export function hasRemote(path: string, name = 'origin'): boolean {
+  return runGit(['remote'], path)
+    .stdout.split('\n')
+    .map((s) => s.trim())
+    .includes(name)
+}
+
+/** The remote's default branch (origin/HEAD), falling back to main/master/HEAD. */
+export function defaultBaseBranch(path: string): string {
+  const head = runGit(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], path)
+  if (head.exit === 0 && head.stdout.trim()) return head.stdout.trim().replace(/^origin\//, '')
+  for (const b of ['main', 'master']) {
+    if (runGit(['rev-parse', '--verify', `origin/${b}`], path).exit === 0) return b
+  }
+  return currentBranch(path) ?? 'main'
+}
+
+/** Commit any pending worktree changes onto the current branch (no-op if clean). */
+export function commitWorktree(worktreePath: string, message: string): void {
+  runGit(['add', '-A'], worktreePath)
+  if (runGit(['status', '--porcelain'], worktreePath).stdout.trim().length === 0) return
+  const c = runGit(
+    ['-c', 'user.name=harnext', '-c', 'user.email=agent@harnext.local', 'commit', '-m', message],
+    worktreePath
+  )
+  if (c.exit !== 0) throw new Error(`commit failed: ${c.stderr.trim() || c.stdout.trim()}`)
+}
+
+/** Push a branch to origin and set upstream. */
+export function pushBranch(path: string, branch: string): void {
+  const r = runGit(['push', '-u', 'origin', branch], path)
+  if (r.exit !== 0) throw new Error(`git push failed: ${r.stderr.trim() || r.stdout.trim()}`)
+}
+
+function runGh(args: string[], cwd: string): { exit: number; stdout: string; stderr: string } {
+  const r = spawnSync('gh', args, { cwd, encoding: 'utf-8', maxBuffer: 16 * 1024 * 1024 })
+  if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
+    throw new Error(
+      'GitHub CLI (gh) not found. Install gh and run `gh auth login` to open pull requests.'
+    )
+  }
+  return { exit: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
+}
+
+/** Open a PR for `branch` against `base` via the gh CLI; returns the PR URL. */
+export function createPullRequest(
+  path: string,
+  opts: { branch: string; base: string; title: string; body: string }
+): string {
+  const r = runGh(
+    [
+      'pr',
+      'create',
+      '--base',
+      opts.base,
+      '--head',
+      opts.branch,
+      '--title',
+      opts.title,
+      '--body',
+      opts.body
+    ],
+    path
+  )
+  const out = `${r.stdout}\n${r.stderr}`
+  const url = out.match(/https:\/\/github\.com\/\S+\/pull\/\d+/)
+  // gh prints the existing PR URL (and a non-zero exit) when one already exists.
+  if (url) return url[0]
+  if (r.exit !== 0) throw new Error(`gh pr create failed: ${(r.stderr || r.stdout).trim()}`)
+  throw new Error(`gh pr create returned no PR URL: ${r.stdout.trim()}`)
 }
 
 // ── worktrees ────────────────────────────────────────────────────────
@@ -178,10 +264,12 @@ export function parseUnifiedDiff(text: string): WorktreeDiff {
     } else if (line.startsWith('-')) {
       hunk.lines.push({ t: 'del', o: oldNo++, n: null, c: line.slice(1) })
       file.del++
-    } else if (line.startsWith(' ') || line === '') {
+    } else if (line.startsWith(' ')) {
       hunk.lines.push({ t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) })
     }
-    // '\ No newline at end of file' and headers (---/+++) are skipped
+    // Empty tokens (trailing newline from split), '\ No newline at end of
+    // file', and headers (---/+++) are skipped — git prefixes real context
+    // lines (even blank ones) with a leading space.
   }
   pushFile()
 
@@ -246,8 +334,7 @@ function parsePatchHunks(patch: string): DiffHunk[] {
     let l: DiffLine | null = null
     if (line.startsWith('+')) l = { t: 'add', o: null, n: newNo++, c: line.slice(1) }
     else if (line.startsWith('-')) l = { t: 'del', o: oldNo++, n: null, c: line.slice(1) }
-    else if (line.startsWith(' ') || line === '')
-      l = { t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) }
+    else if (line.startsWith(' ')) l = { t: 'ctx', o: oldNo++, n: newNo++, c: line.slice(1) }
     if (l) hunk.lines.push(l)
   }
   return hunks

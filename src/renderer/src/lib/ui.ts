@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react'
 import type { AgentStatus, Project } from '@shared/types'
 
 const PALETTE = ['#8B7CF6', '#FFA63D', '#34D399', '#5B8DEF', '#F8736A', '#22C7C0', '#F5B642']
@@ -50,9 +51,9 @@ export function timeUntil(ts: number | null): string {
   if (s < 60) return 'in <1m'
   const m = Math.floor(s / 60)
   if (m < 60) return `in ${m}m`
-  const h = Math.floor(m / 60)
+  const h = Math.round(m / 60)
   if (h < 24) return `in ${h}h`
-  return `in ${Math.floor(h / 24)}d`
+  return `in ${Math.round(h / 24)}d`
 }
 
 export function elapsed(from: number, to: number): string {
@@ -64,4 +65,16 @@ export function elapsed(from: number, to: number): string {
 
 export function shortModel(model: string | null): string {
   return (model ?? '').split('/').pop() ?? ''
+}
+
+/**
+ * Keyboard handler that fires `fn` on Enter/Space, for click-only `<div>`s that
+ * carry `role="button"` + `tabIndex={0}` so they're operable without a mouse.
+ */
+export function onActivate(fn?: () => void) {
+  return (e: KeyboardEvent): void => {
+    if (!fn || (e.key !== 'Enter' && e.key !== ' ')) return
+    e.preventDefault()
+    fn()
+  }
 }

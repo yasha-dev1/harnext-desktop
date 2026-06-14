@@ -15,7 +15,7 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import StatusPill from '../components/StatusPill'
-import { elapsed, shortModel } from '../lib/ui'
+import { elapsed, onActivate, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
 
 const ROLE_META: Record<Role, { ic: keyof typeof Icon; name: string; icCls: string }> = {
@@ -97,7 +97,10 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
       <div className="msg-body" style={{ paddingTop: 0 }}>
         <div
           className="toolcall"
+          role="button"
+          tabIndex={0}
           onClick={() => setOpen((o) => !o)}
+          onKeyDown={onActivate(() => setOpen((o) => !o))}
           style={{ cursor: 'pointer', marginTop: 0 }}
         >
           <span className="tc-ic">
@@ -262,7 +265,10 @@ const FileBlock = memo(function FileBlock({ file }: { file: DiffFile }): JSX.Ele
     <div className="file-block">
       <div
         className={'file-bar' + (collapsed ? ' collapsed' : '')}
+        role="button"
+        tabIndex={0}
         onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={onActivate(() => setCollapsed((c) => !c))}
       >
         <span className="file-chev">
           <Icon.chevron size={14} />
@@ -447,6 +453,168 @@ function RightPane({
 
 // ── actions ──────────────────────────────────────────────────────────
 
+function OpenPRPanel({
+  agent,
+  onError
+}: {
+  agent: AgentMeta
+  onError: (msg: string) => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState(agent.title)
+  const [base, setBase] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const generatedRef = useRef(false)
+
+  // Open the dialog and, on first open, ask the model for a PR title + body
+  // (and the repo's default base) the same way the worktree name is generated,
+  // so the fields aren't blank. Best-effort: defaults stay on failure.
+  const openModal = (): void => {
+    setOpen(true)
+    if (generatedRef.current) return
+    generatedRef.current = true
+    setGenerating(true)
+    void window.api.agents
+      .suggestPR(agent.id)
+      .then((s) => {
+        setTitle(s.title)
+        setBase(s.base)
+        setBody(s.body)
+      })
+      .catch(() => {
+        /* keep defaults — the user can fill them in manually */
+      })
+      .finally(() => setGenerating(false))
+  }
+
+  const submit = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const u = await window.api.agents.openPR(agent.id, {
+        title: title.trim() || undefined,
+        base: base.trim() || undefined,
+        body: body.trim() || undefined
+      })
+      setUrl(u)
+      setOpen(false)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (url) {
+    return (
+      <a className="btn ok" href={url} target="_blank" rel="noreferrer" title={url}>
+        <Icon.external size={14} />
+        PR opened
+      </a>
+    )
+  }
+
+  return (
+    <>
+      <button className="btn" onClick={openModal}>
+        <Icon.branch size={14} />
+        Push &amp; open PR
+      </button>
+      {open && (
+        <div className="modal-backdrop" onClick={() => !busy && setOpen(false)}>
+          <div className="modal-card pr-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              <Icon.branch size={15} />
+              Open a pull request
+              {generating && <span className="pr-spin" role="status" aria-label="Generating" />}
+            </div>
+
+            {/* base ← compare, like GitHub's open-PR header */}
+            <div className="pr-branchbar">
+              <span className="pr-into">base</span>
+              {generating ? (
+                <span className="pr-skel pr-skel-base" />
+              ) : (
+                <input
+                  className="pr-base"
+                  value={base}
+                  disabled={busy}
+                  placeholder="default branch"
+                  onChange={(e) => setBase(e.target.value)}
+                />
+              )}
+              <span className="pr-arrow" aria-hidden="true">
+                ←
+              </span>
+              <span className="pr-into">compare</span>
+              <span className="pr-branch" title={agent.branch ?? ''}>
+                <Icon.branch size={12} />
+                {agent.branch ?? '(uncommitted)'}
+              </span>
+            </div>
+
+            <p className="modal-desc">
+              Pushes <code>{agent.branch}</code> to <code>origin</code> and opens a PR via the
+              GitHub CLI.
+            </p>
+
+            <label className="modal-field">
+              <span>Title</span>
+              {generating ? (
+                <span className="pr-skel pr-skel-input" />
+              ) : (
+                <input value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+              )}
+            </label>
+            <label className="modal-field">
+              <span>Description</span>
+              {generating ? (
+                <span className="pr-skel pr-skel-area" />
+              ) : (
+                <textarea
+                  value={body}
+                  rows={10}
+                  disabled={busy}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              )}
+            </label>
+            <div className="modal-actions">
+              <button className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn ok"
+                disabled={busy || generating || !title.trim()}
+                onClick={() => void submit()}
+              >
+                {busy ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Creating…
+                  </>
+                ) : generating ? (
+                  <>
+                    <span className="pr-spin sm" aria-hidden="true" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <Icon.branch size={14} />
+                    Create pull request
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function DetailActions({
   agent,
   editor,
@@ -498,6 +666,7 @@ function DetailActions({
             <Icon.trash size={14} />
             Discard
           </button>
+          {agent.branch && <OpenPRPanel agent={agent} onError={onError} />}
           {agent.branch && (
             <button className="btn ok" onClick={merge}>
               <Icon.merge size={14} />

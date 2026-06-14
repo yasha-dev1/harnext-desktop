@@ -217,7 +217,10 @@ const SETTINGS_DEFAULTS: AppSettings = {
   editor: 'VS Code',
   openOnDone: false,
   evalLoop: true,
-  worktreeRoot: DEFAULT_WORKTREE_ROOT
+  worktreeRoot: DEFAULT_WORKTREE_ROOT,
+  soundOnDone: true,
+  doneSound: 'chime',
+  customSoundPath: ''
 }
 
 export function getSettings(): AppSettings {
@@ -233,7 +236,11 @@ export function getSettings(): AppSettings {
       /* skip bad rows */
     }
   }
-  return { ...SETTINGS_DEFAULTS, ...stored }
+  const merged = { ...SETTINGS_DEFAULTS, ...stored }
+  // Migrate the removed 'bruh' sound (dropped with its bundled mp3) to the
+  // default so upgraded users aren't left with a silent, unrecognised cue.
+  if (merged.doneSound === 'bruh') merged.doneSound = SETTINGS_DEFAULTS.doneSound
+  return merged
 }
 
 export function setSettings(patch: Partial<AppSettings>): AppSettings {
