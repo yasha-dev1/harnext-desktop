@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
@@ -16,8 +16,19 @@ export function runGit(
   }
 }
 
+/**
+ * True only when `path` is the *top level* of a git repo. A folder merely
+ * nested inside a repo is not treated as git, so we never create agent
+ * worktrees rooted at an ancestor repo the user didn't open (see #46).
+ */
 export function isGitRepo(path: string): boolean {
-  return runGit(['rev-parse', '--is-inside-work-tree'], path).stdout.trim() === 'true'
+  const top = runGit(['rev-parse', '--show-toplevel'], path)
+  if (top.exit !== 0 || !top.stdout.trim()) return false
+  try {
+    return realpathSync(top.stdout.trim()) === realpathSync(path)
+  } catch {
+    return false
+  }
 }
 
 export function currentBranch(path: string): string | null {
