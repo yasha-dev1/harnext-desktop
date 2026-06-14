@@ -19,9 +19,14 @@ import type {
 } from '../../shared/types'
 import * as db from '../db'
 import {
+  commitWorktree,
+  createPullRequest,
   createWorktree,
+  defaultBaseBranch,
   diffFromSnapshots,
+  hasRemote,
   mergeWorktree,
+  pushBranch,
   removeWorktree,
   worktreeDiff
 } from '../git'
@@ -295,6 +300,34 @@ export class AgentManager {
     removeWorktree(project.path, meta.worktreePath, meta.branch)
     await this.disposeAgent(agentId)
     this.setStatus(agentId, 'done', `Merged into ${project.branch ?? 'HEAD'}`)
+  }
+
+  /**
+   * Commit the agent's worktree, push its branch to origin, and open a pull
+   * request against `base` (defaults to the remote's default branch). Returns
+   * the PR URL. The agent and its branch are kept — this is an alternative to
+   * the local-only `merge()` for teams that integrate via review.
+   */
+  async openPullRequest(
+    agentId: string,
+    opts: { base?: string; title?: string; body?: string } = {}
+  ): Promise<string> {
+    const meta = db.getAgent(agentId, this.isLive(agentId))
+    if (!meta) throw new Error('Agent not found')
+    const project = db.getProject(meta.projectId)
+    if (!project) throw new Error('Project not found')
+    if (!meta.worktreePath || !meta.branch) {
+      throw new Error('This agent has no worktree/branch to push.')
+    }
+    if (!hasRemote(project.path)) {
+      throw new Error('This project has no `origin` remote to push to.')
+    }
+    const title = opts.title?.trim() || meta.title
+    const base = opts.base?.trim() || defaultBaseBranch(project.path)
+    const body = opts.body ?? `Opened from the harnext agent “${meta.title}”.`
+    commitWorktree(meta.worktreePath, title)
+    pushBranch(meta.worktreePath, meta.branch)
+    return createPullRequest(project.path, { branch: meta.branch, base, title, body })
   }
 
   async discard(agentId: string): Promise<void> {
