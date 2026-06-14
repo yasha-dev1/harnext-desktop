@@ -28,11 +28,12 @@ bash .claude/skills/pr-ready-sound/play-sound.sh \
 
 The script:
 
-- Plays a **jarring alarm sound, repeated several times** (default 4) so it is
-  hard to miss — using whatever audio player is available
-  (`canberra-gtk-play`, `paplay`, `ffplay`, or `aplay` on Linux; `afplay` on
-  macOS). If no player works it falls back to the terminal bell, and if there is
-  no sound file it synthesizes a two-tone siren with `ffplay`.
+- Plays a sound **repeated several times** (default 4) so it is hard to miss.
+  It prefers a custom local file — `bruh.mp3` in this skill folder (or whatever
+  `PR_SOUND_FILE` points at) — played via `ffplay`/`mpg123`/`afplay`/`paplay`.
+  If that file is absent it falls back to a jarring system **alarm sound**
+  (`canberra-gtk-play`/`paplay`/`ffplay`/`aplay`), then to an `ffplay`-synthesized
+  two-tone siren, and finally to the terminal bell.
 - Prints a `🔔🔔🔔 <message>` line so there is a visible cue even when muted.
 - **Opens the PR URL in a new Firefox window** (`firefox --new-window`) so the
   user can immediately review it.
@@ -43,6 +44,9 @@ Environment variables control how disturbing it is:
 
 - `PR_SOUND_REPEAT` — number of times to repeat (default `4`).
 - `PR_SOUND_GAP` — seconds between repeats (default `0.35`).
+- `PR_SOUND_FILE` — path to a custom sound file (default `bruh.mp3` in this
+  folder). Custom sound files are git-ignored, so they stay local-only and the
+  skill still works for others via the system-alarm fallback.
 
 ```bash
 PR_SOUND_REPEAT=8 PR_SOUND_GAP=0.2 bash .claude/skills/pr-ready-sound/play-sound.sh "MERGE ME" "$URL"

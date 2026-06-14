@@ -1,0 +1,6 @@
+# Custom alert sounds are local-only — do not commit them.
+# The script falls back to the system alarm sound when these are absent.
+*.mp3
+*.wav
+*.ogg
+*.oga

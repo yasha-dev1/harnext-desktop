@@ -14,9 +14,35 @@ URL="${2:-}"
 REPEAT="${PR_SOUND_REPEAT:-4}"
 GAP="${PR_SOUND_GAP:-0.35}"
 
-# A jarring "alarm" sound shipped on most Linux desktops (more attention-grabbing
-# than the gentle "complete" chime).
+# Resolve the skill directory so the bundled sound is found regardless of CWD.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# Preferred custom sound (not committed to git). Override with PR_SOUND_FILE.
+# If this file is missing we fall back to the system alarm sound below.
+CUSTOM_SOUND="${PR_SOUND_FILE:-$SCRIPT_DIR/bruh.mp3}"
+
+# A jarring "alarm" sound shipped on most Linux desktops, used as the fallback
+# when the custom sound file is not present.
 ALARM_SOUND="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+
+# Play the custom sound file once, using whatever player handles MP3.
+# Returns 1 (so callers fall back) if the file is missing or nothing can play it.
+play_custom_once() {
+  [ -f "$CUSTOM_SOUND" ] || return 1
+  if command -v ffplay >/dev/null 2>&1; then
+    ffplay -nodisp -autoexit -loglevel quiet "$CUSTOM_SOUND" >/dev/null 2>&1 && return 0
+  fi
+  if command -v mpg123 >/dev/null 2>&1; then
+    mpg123 -q "$CUSTOM_SOUND" >/dev/null 2>&1 && return 0
+  fi
+  if command -v afplay >/dev/null 2>&1; then   # macOS handles mp3 natively
+    afplay "$CUSTOM_SOUND" >/dev/null 2>&1 && return 0
+  fi
+  if command -v paplay >/dev/null 2>&1; then
+    paplay "$CUSTOM_SOUND" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
 
 # Play the alert exactly once. Returns 0 if some backend produced sound.
 play_once_linux() {
@@ -51,6 +77,8 @@ play_once_macos() {
 }
 
 play_once() {
+  # Prefer the custom sound (e.g. bruh.mp3); fall back to the system alarm.
+  play_custom_once && return 0
   case "$(uname -s)" in
     Darwin) play_once_macos ;;
     Linux)  play_once_linux ;;
