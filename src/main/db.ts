@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join, basename } from 'node:path'
+import { DEFAULT_WORKTREE_ROOT } from './git'
 import type {
   AgentMeta,
   AgentMode,
@@ -14,6 +15,7 @@ import type {
   MessageItem,
   PermissionMode,
   Project,
+  ProjectEnvConfig,
   Role,
   TimelineItem,
   ToolCallItem
@@ -166,6 +168,10 @@ const MIGRATIONS = [
     created_at INTEGER NOT NULL
   );
   CREATE INDEX idx_loop_runs_loop ON loop_runs(loop_id, created_at DESC);
+  `,
+  // v3 — per-project Docker sandbox config (detected on add; JSON, see ProjectEnvConfig)
+  `
+  ALTER TABLE projects ADD COLUMN env_config TEXT;
   `
 ]
 
@@ -210,7 +216,8 @@ const SETTINGS_DEFAULTS: AppSettings = {
   mode: 'acceptEdits',
   editor: 'VS Code',
   openOnDone: false,
-  evalLoop: true
+  evalLoop: true,
+  worktreeRoot: DEFAULT_WORKTREE_ROOT
 }
 
 export function getSettings(): AppSettings {
@@ -250,9 +257,18 @@ interface ProjectRow {
   is_git: number
   last_opened_at: number
   created_at: number
+  env_config: string | null
 }
 
 function toProject(r: ProjectRow): Project {
+  let envConfig: ProjectEnvConfig | null = null
+  if (r.env_config) {
+    try {
+      envConfig = JSON.parse(r.env_config) as ProjectEnvConfig
+    } catch {
+      /* corrupt row — treat as not-yet-analyzed */
+    }
+  }
   return {
     id: r.id,
     name: r.name,
@@ -260,7 +276,8 @@ function toProject(r: ProjectRow): Project {
     branch: r.branch,
     isGit: r.is_git === 1,
     lastOpenedAt: r.last_opened_at,
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    envConfig
   }
 }
 
@@ -299,6 +316,11 @@ export function getProject(id: number): Project | undefined {
 
 export function touchProject(id: number): void {
   db.prepare('UPDATE projects SET last_opened_at = ? WHERE id = ?').run(Date.now(), id)
+}
+
+export function setProjectEnvConfig(id: number, config: ProjectEnvConfig): Project | undefined {
+  db.prepare('UPDATE projects SET env_config = ? WHERE id = ?').run(JSON.stringify(config), id)
+  return getProject(id)
 }
 
 export function removeProject(id: number): void {

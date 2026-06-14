@@ -1,9 +1,16 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
-import type { AppSettings, LoopInput, StartAgentInput } from '../shared/types'
+import type {
+  AppSettings,
+  EnvOverrides,
+  LoopInput,
+  ProjectEnvConfig,
+  StartAgentInput
+} from '../shared/types'
 import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
+import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
 import { currentBranch, isGitRepo } from './git'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
@@ -21,6 +28,8 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     win.isMaximized() ? win.unmaximize() : win.maximize()
   })
   ipcMain.on('win:close', () => getWindow()?.close())
+
+  ipcMain.handle('app:openExternal', (_e, url: string) => shell.openExternal(url))
 
   ipcMain.handle('dialog:pickDirectory', async () => {
     const win = getWindow()
@@ -55,9 +64,20 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
 
   // projects
   ipcMain.handle('projects:list', () => db.listProjects())
-  ipcMain.handle('projects:create', (_e, path: string) => {
+  ipcMain.handle('projects:create', async (_e, path: string) => {
     const git = isGitRepo(path)
-    return db.createProject(path, git ? currentBranch(path) : null, git)
+    const project = db.createProject(path, git ? currentBranch(path) : null, git)
+    // First time we see this project, detect its Docker environment. Best-effort:
+    // never block adding a project on detection. Re-opens keep the stored config
+    // (and the user's enable/disable choice) — re-detect explicitly via detectEnv.
+    if (!project.envConfig) {
+      try {
+        return db.setProjectEnvConfig(project.id, await detectProjectEnv(path)) ?? project
+      } catch {
+        /* leave envConfig null; the Environment tab offers a manual "Detect" */
+      }
+    }
+    return project
   })
   ipcMain.handle('projects:remove', async (_e, id: number) => {
     for (const agent of db.listAgents(id, manager.isLive)) {
@@ -66,6 +86,38 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     db.removeProject(id)
   })
   ipcMain.handle('projects:touch', (_e, id: number) => db.touchProject(id))
+  ipcMain.handle('docker:status', () => getDockerStatus())
+  ipcMain.handle('projects:detectEnv', async (_e, id: number) => {
+    const project = db.getProject(id)
+    if (!project) throw new Error('Project not found')
+    const env = await detectProjectEnv(project.path, project.envConfig?.overrides ?? {})
+    // Preserve the user's enable choice across a re-detect — but never leave it
+    // enabled when the stack can no longer be resolved.
+    const prev = project.envConfig
+    const viable = env.runtime === 'compose' && !env.detectError && env.services.length > 0
+    const enabled = prev ? prev.enabled && viable : env.enabled
+    return db.setProjectEnvConfig(id, { ...env, enabled }) ?? project
+  })
+  ipcMain.handle('projects:setEnvOverrides', async (_e, id: number, patch: EnvOverrides) => {
+    const project = db.getProject(id)
+    if (!project) throw new Error('Project not found')
+    const base = project.envConfig ?? emptyEnvConfig()
+    const overrides = { ...(base.overrides ?? {}), ...patch }
+    // An empty composeFiles list clears the override (back to auto-discovery).
+    if (overrides.composeFiles && overrides.composeFiles.length === 0) delete overrides.composeFiles
+    const env = await detectProjectEnv(project.path, overrides)
+    // Specifying a compose file for a project that had none opts it in; otherwise
+    // keep the user's existing enable choice.
+    const viable = env.runtime === 'compose' && !env.detectError && env.services.length > 0
+    const enabled = viable ? (base.runtime === 'compose' ? base.enabled : true) : false
+    return db.setProjectEnvConfig(id, { ...env, enabled }) ?? project
+  })
+  ipcMain.handle('projects:setEnvConfig', (_e, id: number, patch: Partial<ProjectEnvConfig>) => {
+    const project = db.getProject(id)
+    if (!project) throw new Error('Project not found')
+    const base = project.envConfig ?? emptyEnvConfig()
+    return db.setProjectEnvConfig(id, { ...base, ...patch }) ?? project
+  })
 
   // agents
   ipcMain.handle('agents:list', (_e, projectId: number) => db.listAgents(projectId, manager.isLive))
@@ -87,6 +139,7 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     await openInEditor(settings.editor, meta.worktreePath ?? project?.path ?? '.')
   })
   ipcMain.handle('agents:stopAll', () => manager.stopAll())
+  ipcMain.handle('agents:sandbox', (_e, agentId: string) => manager.getSandbox(agentId))
 
   // loops
   ipcMain.handle('loops:list', (_e, projectId: number) => db.listLoops(projectId))

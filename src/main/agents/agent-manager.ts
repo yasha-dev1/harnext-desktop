@@ -7,13 +7,16 @@ import {
   parseGoalVerdict,
   setProviderEnv,
   type AgentSession,
-  type AgentSessionEventListener
+  type AgentSessionEventListener,
+  type CommandExecutor
 } from '@harnext/core'
 import type {
   AgentMeta,
   AgentPush,
   AgentStatus,
+  Project,
   Role,
+  SandboxInfo,
   StartAgentInput,
   WorktreeDiff
 } from '../../shared/types'
@@ -26,6 +29,8 @@ import {
   worktreeDiff
 } from '../git'
 import { DiffTracker } from './diff-service'
+import { DockerExecutor } from '../env/docker-executor'
+import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
 import {
   EVALUATOR_SYSTEM_PROMPT,
   GENERATOR_SYSTEM_PROMPT,
@@ -143,6 +148,12 @@ interface LiveAgent {
   smartModel: string | null
   execModel: string | null
   provider: string
+  /** Docker sandbox routing: when set, shell commands run in the container. */
+  executor: CommandExecutor | null
+  /** Container-side working dir for the executor (the bind-mount target). */
+  execCwd: string | undefined
+  sandbox: SandboxHandle | null
+  sandboxStatus: SandboxInfo['status']
   /** All sessions ever created for this agent (for dispose). */
   sessions: AgentSession[]
   /** The session follow-up prompts go to. */
@@ -195,7 +206,7 @@ export class AgentManager {
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
       const suggested = await generateWorktreeName(provider, model, project.path, cleanPrompt)
-      worktree = createWorktree(project.path, suggested ?? title, agentId)
+      worktree = createWorktree(project.path, suggested ?? title, agentId, settings.worktreeRoot)
     }
     const cwd = worktree?.path ?? project.path
 
@@ -227,6 +238,10 @@ export class AgentManager {
       smartModel: isGoal ? smart : null,
       execModel: isGoal ? executor : model,
       provider,
+      executor: null,
+      execCwd: undefined,
+      sandbox: null,
+      sandboxStatus: 'off',
       sessions: [],
       mainSession: null,
       diffTracker: new DiffTracker(cwd),
@@ -247,17 +262,68 @@ export class AgentManager {
     const userItem = db.insertMessage(agentId, agent.seq++, 'user', cleanPrompt)
     this.send({ agentId, type: 'message', item: userItem })
 
-    if (isGoal) {
-      void this.runGoal(agent, cleanPrompt).catch((err: unknown) =>
-        this.settle(agent, err instanceof Error ? err.message : String(err))
-      )
-    } else {
-      void this.runSingle(agent, cleanPrompt).catch((err: unknown) =>
-        this.settle(agent, err instanceof Error ? err.message : String(err))
-      )
+    // Bring up the Docker sandbox (if enabled) before the agent runs, so it
+    // starts on a ready environment, then run. Bootstrap can take a while, so
+    // this stays off the IPC return path.
+    const run = async (): Promise<void> => {
+      await this.prepareSandbox(agent, project)
+      if (isGoal) await this.runGoal(agent, cleanPrompt)
+      else await this.runSingle(agent, cleanPrompt)
     }
+    void run().catch((err: unknown) =>
+      this.settle(agent, err instanceof Error ? err.message : String(err))
+    )
 
     return db.getAgent(agentId, true)!
+  }
+
+  /**
+   * Stand up the per-worktree container stack and wire a DockerExecutor so the
+   * agent's shell commands (and dev servers) run inside it. No-op unless the
+   * project has the sandbox enabled, is a git project, and has a worktree.
+   */
+  private async prepareSandbox(agent: LiveAgent, project: Project): Promise<void> {
+    const env = project.envConfig
+    if (!env?.enabled || env.runtime !== 'compose' || !agent.isGit || !agent.worktreePath) return
+    this.setStatus(agent.id, 'running', 'Preparing environment')
+    this.setSandboxStatus(agent, 'preparing')
+    try {
+      const name = sandboxProjectName(project.path, agent.worktreePath)
+      const handle = await bootstrapSandbox(env, agent.worktreePath, name)
+      agent.sandbox = handle
+      agent.executor = new DockerExecutor(handle.container, handle.teardown)
+      agent.execCwd = handle.execCwd
+      this.setSandboxStatus(agent, 'ready')
+    } catch (err) {
+      this.setSandboxStatus(agent, 'failed')
+      throw err
+    }
+  }
+
+  /** Build the renderer-facing sandbox state from the live handle + project config. */
+  private sandboxInfo(agent: LiveAgent): SandboxInfo {
+    const exposed = db.getProject(agent.projectId)?.envConfig?.exposed ?? []
+    const hostPorts = agent.sandbox?.hostPorts ?? {}
+    const ports = exposed
+      .filter((e) => hostPorts[e.service] != null)
+      .map((e) => ({
+        service: e.service,
+        url: `http://localhost:${hostPorts[e.service]}`,
+        primary: e.primary
+      }))
+    const primary = ports.find((p) => p.primary) ?? ports[0]
+    return { status: agent.sandboxStatus, primaryUrl: primary?.url ?? null, ports }
+  }
+
+  private setSandboxStatus(agent: LiveAgent, status: SandboxInfo['status']): void {
+    agent.sandboxStatus = status
+    this.send({ agentId: agent.id, type: 'sandbox', info: this.sandboxInfo(agent) })
+  }
+
+  getSandbox(agentId: string): SandboxInfo {
+    const agent = this.live.get(agentId)
+    if (!agent) return { status: 'off', primaryUrl: null, ports: [] }
+    return this.sandboxInfo(agent)
   }
 
   async prompt(agentId: string, text: string): Promise<void> {
@@ -340,6 +406,7 @@ export class AgentManager {
       if (agent.flushTimer) clearTimeout(agent.flushTimer)
       if (agent.diffTimer) clearTimeout(agent.diffTimer)
       for (const s of agent.sessions) void s.dispose().catch(() => {})
+      if (agent.sandbox) void agent.sandbox.teardown().catch(() => {})
     }
     this.live.clear()
   }
@@ -437,7 +504,10 @@ export class AgentManager {
       permissionMode: opts.permissionMode,
       systemPrompt: opts.systemPrompt,
       mcpDisabled: opts.mcpDisabled,
-      quiet: true
+      quiet: true,
+      // Sandbox: run shell commands in the container while read/edit/write stay
+      // on the host worktree (bind-mounted, so the container sees the same files).
+      ...(agent.executor ? { executor: agent.executor, execCwd: agent.execCwd } : {})
     })
     agent.sessions.push(session)
     session.subscribe((event) => this.handleEvent(agent, opts.role, event))
@@ -623,6 +693,10 @@ export class AgentManager {
     if (agent.diffTimer) clearTimeout(agent.diffTimer)
     this.live.delete(agentId)
     for (const s of agent.sessions) void s.dispose().catch(() => {})
+    if (agent.sandbox) {
+      void agent.sandbox.teardown().catch(() => {})
+      this.send({ agentId, type: 'sandbox', info: { status: 'off', primaryUrl: null, ports: [] } })
+    }
   }
 
   private setStatus(agentId: string, status: AgentStatus, progress: string, error?: string): void {

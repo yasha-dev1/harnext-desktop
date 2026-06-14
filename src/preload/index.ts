@@ -3,7 +3,9 @@ import type {
   AgentPush,
   AppSettings,
   DesktopApi,
+  EnvOverrides,
   LoopInput,
+  ProjectEnvConfig,
   StartAgentInput
 } from '../shared/types'
 
@@ -14,6 +16,7 @@ const api: DesktopApi = {
     close: () => ipcRenderer.send('win:close')
   },
   pickDirectory: () => ipcRenderer.invoke('dialog:pickDirectory'),
+  openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:set', patch)
@@ -33,7 +36,13 @@ const api: DesktopApi = {
     list: () => ipcRenderer.invoke('projects:list'),
     create: (path: string) => ipcRenderer.invoke('projects:create', path),
     remove: (id: number) => ipcRenderer.invoke('projects:remove', id),
-    touch: (id: number) => ipcRenderer.invoke('projects:touch', id)
+    touch: (id: number) => ipcRenderer.invoke('projects:touch', id),
+    dockerStatus: () => ipcRenderer.invoke('docker:status'),
+    detectEnv: (id: number) => ipcRenderer.invoke('projects:detectEnv', id),
+    setEnvConfig: (id: number, patch: Partial<ProjectEnvConfig>) =>
+      ipcRenderer.invoke('projects:setEnvConfig', id, patch),
+    setEnvOverrides: (id: number, patch: EnvOverrides) =>
+      ipcRenderer.invoke('projects:setEnvOverrides', id, patch)
   },
   agents: {
     list: (projectId: number) => ipcRenderer.invoke('agents:list', projectId),
@@ -46,7 +55,8 @@ const api: DesktopApi = {
     merge: (agentId: string) => ipcRenderer.invoke('agents:merge', agentId),
     discard: (agentId: string) => ipcRenderer.invoke('agents:discard', agentId),
     openEditor: (agentId: string) => ipcRenderer.invoke('agents:openEditor', agentId),
-    stopAll: () => ipcRenderer.invoke('agents:stopAll')
+    stopAll: () => ipcRenderer.invoke('agents:stopAll'),
+    sandbox: (agentId: string) => ipcRenderer.invoke('agents:sandbox', agentId)
   },
   loops: {
     list: (projectId: number) => ipcRenderer.invoke('loops:list', projectId),
