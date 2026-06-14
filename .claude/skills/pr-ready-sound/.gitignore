@@ -1,6 +1,14 @@
-# Custom alert sounds are local-only — do not commit them.
-# The script falls back to the system alarm sound when these are absent.
+# Secrets — never commit Dropbox tokens.
+.env
+
+# Custom alert sounds and recorded proof videos are local-only.
+# The skill falls back to the system alarm sound when these are absent.
 *.mp3
 *.wav
 *.ogg
 *.oga
+*.mp4
+*.webm
+
+# If the upload script ever grows deps, keep them out of git.
+node_modules/
