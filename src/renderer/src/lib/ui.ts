@@ -67,9 +67,29 @@ export function shortModel(model: string | null): string {
   return (model ?? '').split('/').pop() ?? ''
 }
 
-/** Provider id from a `provider/model` id, e.g. `anthropic/claude-…` → `anthropic`. */
+// Infer a provider brand from a bare model id (no `provider/` prefix), by the
+// model-name family. Returns '' when it can't be told confidently → cube.
+function inferProvider(id: string): string {
+  if (id.startsWith('claude')) return 'anthropic'
+  if (/^(gpt|o1|o3|o4|chatgpt|davinci)/.test(id) || id.includes('codex')) return 'openai'
+  if (id.startsWith('gemini') || id.startsWith('palm') || id.startsWith('gemma')) return 'google'
+  if (id.startsWith('grok')) return 'xai'
+  if (id.startsWith('deepseek')) return 'deepseek'
+  if (id.startsWith('qwen') || id.startsWith('qwq')) return 'qwen'
+  if (/^(mistral|mixtral|codestral|ministral|magistral|devstral|pixtral)/.test(id)) return 'mistral'
+  return ''
+}
+
+/**
+ * Provider id for a model id. Handles both `provider/model` (OpenRouter-style,
+ * the prefix is the provider) and a bare direct-provider id like
+ * `claude-sonnet-4-6` (inferred from the model-name family). '' if unknown.
+ */
 export function providerOf(model: string | null): string {
-  return (model ?? '').split('/')[0] ?? ''
+  const id = (model ?? '').toLowerCase()
+  if (!id) return ''
+  if (id.includes('/')) return id.split('/')[0]
+  return inferProvider(id)
 }
 
 /**
