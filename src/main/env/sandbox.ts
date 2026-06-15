@@ -41,16 +41,31 @@ function freePort(): Promise<number> {
 /**
  * Per-worktree override: the base compose's published `ports:` would make every
  * worktree fight over the same host ports. `!override` replaces each exposed
- * service's mapping with a freshly-allocated host port. Everything else
- * (bind-mount of `.`, named volumes) is already per-worktree because we run with
- * `--project-directory <worktree>` and a unique `-p` project name.
+ * service's mapping with a freshly-allocated host port, AND neutralizes any
+ * fixed `container_name:` so two worktrees (or the user's own stack) don't
+ * collide on a global container name (#117). A `container_name:` ignores the
+ * compose project, so without this it stays global; resetting it lets docker
+ * auto-name `<project>-<service>-N`, unique per worktree (we run a unique `-p`
+ * project). Services reach each other by service name, so connectivity is
+ * unaffected. Everything else (bind-mount of `.`, named volumes) is already
+ * per-worktree via `--project-directory <worktree>` + the unique `-p` name.
  */
-function buildOverride(env: ProjectEnvConfig, hostPorts: Record<string, number>): string {
+export function buildOverride(env: ProjectEnvConfig, hostPorts: Record<string, number>): string {
+  const exposedBy = new Map(env.exposed.map((e) => [e.service, e]))
+  // Every detected service appears so its `container_name:` (if any) is reset.
+  const services = new Set<string>([
+    ...env.services.map((s) => s.name),
+    ...env.exposed.map((e) => e.service)
+  ])
   const lines = ['services:']
-  for (const e of env.exposed) {
-    lines.push(`  ${e.service}:`)
-    lines.push('    ports: !override')
-    lines.push(`      - "${hostPorts[e.service]}:${e.containerPort}"`)
+  for (const name of services) {
+    lines.push(`  ${name}:`)
+    lines.push('    container_name: !reset null')
+    const e = exposedBy.get(name)
+    if (e) {
+      lines.push('    ports: !override')
+      lines.push(`      - "${hostPorts[name]}:${e.containerPort}"`)
+    }
   }
   return lines.join('\n') + '\n'
 }
