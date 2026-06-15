@@ -15,8 +15,15 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import StatusPill from '../components/StatusPill'
-import { elapsed, onActivate, shortModel } from '../lib/ui'
+import { elapsed, onActivate, providerOf, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
+import { ProviderLogo } from '../components/ProviderLogo'
+
+// The model's provider brand logo, falling back to the generic cube when no
+// brand mark exists for that provider so the tag is never icon-less.
+function ModelLogo({ modelId, size = 13 }: { modelId: string | null; size?: number }): JSX.Element {
+  return <ProviderLogo id={providerOf(modelId)} size={size} fallback={<Icon.cube size={size} />} />
+}
 
 const ROLE_META: Record<Role, { ic: keyof typeof Icon; name: string; icCls: string }> = {
   user: { ic: 'user', name: 'You', icCls: 'user' },
@@ -40,6 +47,13 @@ function roleModel(agent: AgentMeta, role: Role): string {
   return shortModel(agent.smartModel)
 }
 
+/** Raw `provider/model` id for a message role (mirrors roleModel, for the logo). */
+function roleModelId(agent: AgentMeta, role: Role): string | null {
+  if (agent.mode === 'single') return agent.modelId
+  if (role === 'exec') return agent.execModel
+  return agent.smartModel
+}
+
 function MsgText({ text }: { text: string }): JSX.Element {
   return (
     <div className="msg-text">
@@ -59,7 +73,12 @@ const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }
       <div className="msg-body">
         <div className="msg-role">
           <b>{r.name}</b>
-          {m.role !== 'user' && <span className="model">· {roleModel(agent, m.role)}</span>}
+          {m.role !== 'user' && (
+            <span className="model">
+              <ModelLogo modelId={roleModelId(agent, m.role)} size={11} />
+              {roleModel(agent, m.role)}
+            </span>
+          )}
         </div>
         {m.role === 'eval' && m.verdict ? (
           <div className="eval-card">
@@ -208,7 +227,10 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
           <div className="msg-body">
             <div className="msg-role">
               <b>{ROLE_META[streaming.role].name}</b>
-              <span className="model">· {roleModel(agent, streaming.role)}</span>
+              <span className="model">
+                <ModelLogo modelId={roleModelId(agent, streaming.role)} size={11} />
+                {roleModel(agent, streaming.role)}
+              </span>
             </div>
             <MsgText text={streaming.text} />
           </div>
@@ -942,7 +964,7 @@ export default function AgentDetail(): JSX.Element {
             )}
             {agent.mode === 'single' ? (
               <span className="tag">
-                <Icon.cube size={13} />
+                <ModelLogo modelId={agent.modelId} size={13} />
                 {shortModel(agent.modelId)}
               </span>
             ) : (
