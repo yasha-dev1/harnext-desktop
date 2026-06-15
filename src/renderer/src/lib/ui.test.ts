@@ -3,6 +3,7 @@ import {
   projectColor,
   projectMark,
   shortModel,
+  providerOf,
   timeAgo,
   timeUntil,
   elapsed,
@@ -36,6 +37,34 @@ describe('shortModel', () => {
   })
   it('returns empty string for null', () => {
     expect(shortModel(null)).toBe('')
+  })
+})
+
+describe('providerOf (#68)', () => {
+  it('uses the prefix of an OpenRouter-style provider/model id', () => {
+    expect(providerOf('anthropic/claude-sonnet-4-6')).toBe('anthropic')
+    expect(providerOf('deepseek/deepseek-v4-flash')).toBe('deepseek')
+  })
+  it('infers the provider from a bare direct-provider model id', () => {
+    expect(providerOf('claude-sonnet-4-6')).toBe('anthropic')
+    expect(providerOf('claude-opus-4-8')).toBe('anthropic')
+    expect(providerOf('gpt-5.3-codex')).toBe('openai')
+    expect(providerOf('o3-mini')).toBe('openai')
+    expect(providerOf('gemini-3-pro')).toBe('google')
+    expect(providerOf('grok-4')).toBe('xai')
+    expect(providerOf('deepseek-v4-flash')).toBe('deepseek')
+    expect(providerOf('qwen3-max')).toBe('qwen')
+    expect(providerOf('mistral-large')).toBe('mistral')
+    expect(providerOf('codestral-2')).toBe('mistral')
+  })
+  it('is case-insensitive', () => {
+    expect(providerOf('Claude-Sonnet-4-6')).toBe('anthropic')
+  })
+  it('returns empty string for unknown ids and null (→ cube fallback)', () => {
+    expect(providerOf('llama-4-70b')).toBe('')
+    expect(providerOf('some-random-model')).toBe('')
+    expect(providerOf(null)).toBe('')
+    expect(providerOf('')).toBe('')
   })
 })
 
