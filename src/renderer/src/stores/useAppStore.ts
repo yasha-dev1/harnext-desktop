@@ -35,6 +35,10 @@ interface AppStore {
   streaming: Record<string, { role: Role; text: string }>
   diffs: Record<string, WorktreeDiff>
   sandboxes: Record<string, SandboxInfo>
+  /** Pending steering messages queued for a running agent. */
+  steers: Record<string, string[]>
+  /** Steers that weren't delivered (run aborted/failed) — shown until resent. */
+  undeliveredSteers: Record<string, string[]>
   loopsByProject: Record<number, LoopMeta[]>
   loopRuns: Record<number, LoopRun[]>
 
@@ -66,6 +70,8 @@ interface AppStore {
   sendPrompt: (agentId: string, text: string, images?: string[]) => Promise<void>
   /** Bring an ended conversation back to life. */
   resumeAgent: (agentId: string) => Promise<void>
+  /** Pop the last queued steer back into the composer for editing. */
+  recallSteer: (agentId: string) => Promise<string | null>
   abortAgent: (agentId: string) => Promise<void>
   discardAgent: (agentId: string) => Promise<void>
   mergeAgent: (agentId: string) => Promise<void>
@@ -128,6 +134,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         })
         break
       }
+      case 'steers':
+        set({ steers: { ...state.steers, [push.agentId]: push.steers } })
+        break
+      case 'steers-undelivered':
+        set({ undeliveredSteers: { ...state.undeliveredSteers, [push.agentId]: push.texts } })
+        break
       case 'status': {
         const agent = state.agents[push.agentId]
         if (!agent) break
@@ -183,6 +195,8 @@ export const useAppStore = create<AppStore>((set, get) => {
     streaming: {},
     diffs: {},
     sandboxes: {},
+    steers: {},
+    undeliveredSteers: {},
     loopsByProject: {},
     loopRuns: {},
 
@@ -288,6 +302,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       // Reload so the agent reflects its now-live state (reply box re-enabled).
       if (agent) await get().loadAgents(agent.projectId)
     },
+    recallSteer: (agentId) => window.api.agents.recallSteer(agentId),
 
     abortAgent: async (agentId) => {
       await window.api.agents.abort(agentId)

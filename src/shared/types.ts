@@ -286,6 +286,11 @@ export type AgentPush =
   | { agentId: string; type: 'agents-changed'; projectId: number }
   | { agentId: string; type: 'loops-changed'; projectId: number }
   | { agentId: string; type: 'sandbox'; info: SandboxInfo }
+  // Steering: messages queued while the agent is mid-run, injected at the next
+  // turn boundary. `steers` is the current pending queue (empty = none).
+  | { agentId: string; type: 'steers'; steers: string[] }
+  // A run ended (aborted/failed) with steers still queued — surface to resend.
+  | { agentId: string; type: 'steers-undelivered'; texts: string[] }
 
 export interface StartAgentInput {
   projectId: number
@@ -409,6 +414,8 @@ export interface DesktopApi {
     prompt(agentId: string, text: string, images?: string[]): Promise<void>
     /** Bring an ended conversation back to life (rehydrate session + sandbox). */
     resume(agentId: string): Promise<void>
+    /** Remove and return the last queued steer (for Esc-to-recall editing). */
+    recallSteer(agentId: string): Promise<string | null>
     abort(agentId: string): Promise<void>
     remove(agentId: string): Promise<void>
     timeline(agentId: string): Promise<TimelineItem[]>
