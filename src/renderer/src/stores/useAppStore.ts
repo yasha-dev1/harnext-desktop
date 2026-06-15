@@ -52,6 +52,8 @@ interface AppStore {
   loadProjects: () => Promise<void>
   openProjectDialog: () => Promise<Project | null>
   removeProject: (id: number) => Promise<void>
+  /** Branch switcher (#96): point the project's context at a branch worktree. */
+  checkoutBranch: (projectId: number, branch: string) => Promise<void>
 
   // In-app file/folder picker (replaces the native OS dialog). `pickPath`
   // resolves once the user selects a path or cancels (null), like a dialog.
@@ -241,6 +243,15 @@ export const useAppStore = create<AppStore>((set, get) => {
     removeProject: async (id) => {
       await window.api.projects.remove(id)
       await get().loadProjects()
+    },
+
+    checkoutBranch: async (projectId, branch) => {
+      const updated = await window.api.projects.checkoutBranch(projectId, branch)
+      if (updated) {
+        set((state) => ({
+          projects: state.projects.map((p) => (p.id === projectId ? updated : p))
+        }))
+      }
     },
 
     loadDockerStatus: async () => {
