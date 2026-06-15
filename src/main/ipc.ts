@@ -211,8 +211,8 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   // agents
   ipcMain.handle('agents:list', (_e, projectId: number) => db.listAgents(projectId, manager.isLive))
   ipcMain.handle('agents:start', (_e, input: StartAgentInput) => manager.startAgent(input))
-  ipcMain.handle('agents:prompt', (_e, agentId: string, text: string) =>
-    manager.prompt(agentId, text)
+  ipcMain.handle('agents:prompt', (_e, agentId: string, text: string, images?: string[]) =>
+    manager.prompt(agentId, text, images)
   )
   ipcMain.handle('agents:abort', (_e, agentId: string) => manager.abort(agentId))
   ipcMain.handle('agents:remove', (_e, agentId: string) => manager.remove(agentId))

@@ -18,6 +18,8 @@ import StatusPill from '../components/StatusPill'
 import { elapsed, onActivate, providerOf, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
 import { ProviderLogo } from '../components/ProviderLogo'
+import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
+import { useAttachments } from '../lib/attachments'
 
 // The model's provider brand logo, falling back to the generic cube when no
 // brand mark exists for that provider so the tag is never icon-less.
@@ -92,8 +94,9 @@ const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }
             </div>
           </div>
         ) : (
-          <MsgText text={m.content} />
+          m.content && <MsgText text={m.content} />
         )}
+        {m.images && m.images.length > 0 && <MessageImages images={m.images} />}
       </div>
     </div>
   )
@@ -176,6 +179,7 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   const sendPrompt = useAppStore((s) => s.sendPrompt)
   const [reply, setReply] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const att = useAttachments()
   const scrollRef = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
 
@@ -189,11 +193,14 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
 
   const send = async (): Promise<void> => {
     const text = reply.trim()
-    if (!text || !canReply) return
+    // Allow an image-only reply (text or at least one attachment).
+    if ((!text && att.items.length === 0) || !canReply) return
+    const images = att.items.map((a) => a.dataUrl)
     setReply('')
+    att.clear()
     setSendError(null)
     try {
-      await sendPrompt(agent.id, text)
+      await sendPrompt(agent.id, text, images)
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err))
     }
@@ -246,32 +253,39 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
           {agent.progress}…
         </div>
       )}
-      {sendError && (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--err)' }}>{sendError}</div>
+      {(sendError || att.error) && (
+        <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--err)' }}>
+          {sendError || att.error}
+        </div>
       )}
-      <div className="reply">
-        <input
-          placeholder={
-            !agent.live
-              ? 'Session ended — start a new agent to continue'
-              : isRunning
-                ? 'Agent is working…'
-                : agent.status === 'input'
-                  ? 'Answer the agent…'
-                  : 'Send a follow-up…'
-          }
-          disabled={!canReply}
-          value={reply}
-          onChange={(e) => setReply(e.target.value)}
-          onKeyDown={(e) => {
-            // Ignore the Enter that commits an IME composition (CJK input),
-            // otherwise it sends a half-composed message.
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
-          }}
-        />
-        <button title="Send" onClick={() => void send()} disabled={!canReply}>
-          <Icon.send size={15} />
-        </button>
+      <div className="reply-wrap" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
+        <AttachmentBar items={att.items} onRemove={att.remove} />
+        <div className="reply">
+          <AttachButton onPick={att.addFiles} disabled={!canReply} />
+          <input
+            placeholder={
+              !agent.live
+                ? 'Session ended — start a new agent to continue'
+                : isRunning
+                  ? 'Agent is working…'
+                  : agent.status === 'input'
+                    ? 'Answer the agent…'
+                    : 'Send a follow-up… (paste or drop an image)'
+            }
+            disabled={!canReply}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onPaste={att.onPaste}
+            onKeyDown={(e) => {
+              // Ignore the Enter that commits an IME composition (CJK input),
+              // otherwise it sends a half-composed message.
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
+            }}
+          />
+          <button title="Send" onClick={() => void send()} disabled={!canReply}>
+            <Icon.send size={15} />
+          </button>
+        </div>
       </div>
     </div>
   )

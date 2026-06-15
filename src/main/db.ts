@@ -172,6 +172,10 @@ const MIGRATIONS = [
   // v3 — per-project Docker sandbox config (detected on add; JSON, see ProjectEnvConfig)
   `
   ALTER TABLE projects ADD COLUMN env_config TEXT;
+  `,
+  // v4 — image attachments on a user message (JSON array of data URLs)
+  `
+  ALTER TABLE messages ADD COLUMN images TEXT;
   `
 ]
 
@@ -461,13 +465,23 @@ export function insertMessage(
   seq: number,
   role: Role,
   content: string,
-  verdict: 'approve' | 'revise' | null = null
+  verdict: 'approve' | 'revise' | null = null,
+  images?: string[]
 ): MessageItem {
   const createdAt = Date.now()
+  const imagesJson = images && images.length ? JSON.stringify(images) : null
   db.prepare(
-    'INSERT INTO messages (agent_id, seq, role, content, verdict, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(agentId, seq, role, content, verdict, createdAt)
-  return { kind: 'message', seq, role, content, verdict, createdAt }
+    'INSERT INTO messages (agent_id, seq, role, content, verdict, images, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(agentId, seq, role, content, verdict, imagesJson, createdAt)
+  return {
+    kind: 'message',
+    seq,
+    role,
+    content,
+    verdict,
+    ...(imagesJson ? { images: images as string[] } : {}),
+    createdAt
+  }
 }
 
 export function insertToolCall(
@@ -515,6 +529,7 @@ interface MessageRow {
   role: Role
   content: string
   verdict: 'approve' | 'revise' | null
+  images: string | null
   created_at: number
 }
 
@@ -541,6 +556,7 @@ export function getTimeline(agentId: string): TimelineItem[] {
     role: r.role,
     content: r.content,
     verdict: r.verdict,
+    ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
     createdAt: r.created_at
   }))
   const tools: TimelineItem[] = (
