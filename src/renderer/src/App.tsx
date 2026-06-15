@@ -50,7 +50,6 @@ function Shell(): JSX.Element {
   return (
     <div className="win">
       <Titlebar projects={projects} current={current} settingsActive={settingsActive} />
-      <GlobalFilePicker />
       <Routes>
         <Route path="/" element={<OpenProjectPage />} />
         <Route path="/project/:projectId" element={<ProjectShell />}>
@@ -80,6 +79,10 @@ export default function App(): JSX.Element {
   return (
     <HashRouter>
       <Shell />
+      {/* Mounted once at the root so the in-app file/folder picker is available
+          in every state — including onboarding, whose early return previously
+          left it unmounted (#82). It reads everything it needs from the store. */}
+      <GlobalFilePicker />
     </HashRouter>
   )
 }

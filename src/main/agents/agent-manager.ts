@@ -19,6 +19,7 @@ import type {
   Role,
   SandboxInfo,
   StartAgentInput,
+  ThinkingLevel,
   TimelineItem,
   WorktreeDiff
 } from '../../shared/types'
@@ -262,6 +263,8 @@ interface LiveAgent {
   smartModel: string | null
   execModel: string | null
   provider: string
+  /** Reasoning effort for every session this agent spins up. */
+  thinkingLevel: ThinkingLevel
   /** Docker sandbox routing: when set, shell commands run in the container. */
   executor: CommandExecutor | null
   /** Container-side working dir for the executor (the bind-mount target). */
@@ -311,6 +314,7 @@ export class AgentManager {
     const model = input.model ?? settings.model
     const smart = input.smart ?? settings.smart
     const executor = input.executor ?? settings.executor
+    const thinkingLevel = input.thinkingLevel ?? settings.thinkingLevel
 
     ensureProviderEnv(provider)
 
@@ -319,12 +323,21 @@ export class AgentManager {
     // Isolated worktree for git projects — the user's checkout is never touched.
     // Ask the model for a meaningful branch name first; fall back to the
     // prompt-derived title if it can't (offline, bad key, timeout…).
+    // The project's working repo — its active branch worktree (#96) or the main
+    // checkout. Agent worktrees, the env and merges all happen relative to it.
+    const repoCwd = db.projectCwd(project)
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
-      const suggested = await generateWorktreeName(provider, model, project.path, cleanPrompt)
-      worktree = createWorktree(project.path, suggested ?? title, agentId, settings.worktreeRoot)
+      const suggested = await generateWorktreeName(provider, model, repoCwd, cleanPrompt)
+      worktree = createWorktree(
+        repoCwd,
+        suggested ?? title,
+        agentId,
+        settings.worktreeRoot,
+        input.baseBranch
+      )
     }
-    const cwd = worktree?.path ?? project.path
+    const cwd = worktree?.path ?? repoCwd
 
     db.insertAgent({
       id: agentId,
@@ -344,7 +357,7 @@ export class AgentManager {
     const agent: LiveAgent = {
       id: agentId,
       projectId: input.projectId,
-      projectPath: project.path,
+      projectPath: repoCwd,
       isGit: project.isGit,
       mode: isGoal ? 'goal' : 'single',
       worktreePath: worktree?.path ?? null,
@@ -354,6 +367,7 @@ export class AgentManager {
       smartModel: isGoal ? smart : null,
       execModel: isGoal ? executor : model,
       provider,
+      thinkingLevel,
       executor: null,
       execCwd: undefined,
       sandbox: null,
@@ -518,6 +532,7 @@ export class AgentManager {
       smartModel: meta.smartModel,
       execModel,
       provider,
+      thinkingLevel: settings.thinkingLevel,
       executor: null,
       execCwd: undefined,
       sandbox: null,
@@ -584,10 +599,16 @@ export class AgentManager {
     const project = db.getProject(meta.projectId)
     if (!project) throw new Error('Project not found')
     if (!meta.worktreePath || !meta.branch) throw new Error('This agent has no worktree to merge.')
-    mergeWorktree(project.path, meta.worktreePath, meta.branch, meta.title)
-    removeWorktree(project.path, meta.worktreePath, meta.branch)
+    // Merge into the project's active branch worktree (#96), not necessarily main.
+    const repoCwd = db.projectCwd(project)
+    mergeWorktree(repoCwd, meta.worktreePath, meta.branch, meta.title)
+    removeWorktree(repoCwd, meta.worktreePath, meta.branch)
     await this.disposeAgent(agentId)
-    this.setStatus(agentId, 'done', `Merged into ${project.branch ?? 'HEAD'}`)
+    this.setStatus(
+      agentId,
+      'done',
+      `Merged into ${project.activeBranch ?? project.branch ?? 'HEAD'}`
+    )
   }
 
   /**
@@ -609,7 +630,8 @@ export class AgentManager {
     if (!meta) throw new Error('Agent not found')
     const project = db.getProject(meta.projectId)
     if (!project) throw new Error('Project not found')
-    const base = hasRemote(project.path) ? defaultBaseBranch(project.path) : 'main'
+    const repoCwd = db.projectCwd(project)
+    const base = project.activeBranch ?? (hasRemote(repoCwd) ? defaultBaseBranch(repoCwd) : 'main')
     const fallback = {
       title: meta.title,
       base,
@@ -620,7 +642,7 @@ export class AgentManager {
     const model = meta.modelId ?? meta.execModel ?? settings.model
     try {
       ensureProviderEnv(provider)
-      const cwd = meta.worktreePath ?? project.path
+      const cwd = meta.worktreePath ?? repoCwd
       const gen = await generatePrDetails(
         provider,
         model,
@@ -665,15 +687,16 @@ export class AgentManager {
     if (!meta.worktreePath || !meta.branch) {
       throw new Error('This agent has no worktree/branch to push.')
     }
-    if (!hasRemote(project.path)) {
+    const repoCwd = db.projectCwd(project)
+    if (!hasRemote(repoCwd)) {
       throw new Error('This project has no `origin` remote to push to.')
     }
     const title = opts.title?.trim() || meta.title
-    const base = opts.base?.trim() || defaultBaseBranch(project.path)
+    const base = opts.base?.trim() || project.activeBranch || defaultBaseBranch(repoCwd)
     const body = opts.body ?? `Opened from the harnext agent “${meta.title}”.`
     commitWorktree(meta.worktreePath, title)
     pushBranch(meta.worktreePath, meta.branch)
-    return createPullRequest(project.path, { branch: meta.branch, base, title, body })
+    return createPullRequest(repoCwd, { branch: meta.branch, base, title, body })
   }
 
   async discard(agentId: string): Promise<void> {
@@ -682,7 +705,7 @@ export class AgentManager {
     const project = db.getProject(meta.projectId)
     await this.disposeAgent(agentId)
     if (meta.worktreePath && project) {
-      removeWorktree(project.path, meta.worktreePath, meta.branch)
+      removeWorktree(db.projectCwd(project), meta.worktreePath, meta.branch)
     }
     db.removeAgent(agentId)
     this.send({ agentId, type: 'agents-changed', projectId: meta.projectId })
@@ -816,6 +839,7 @@ export class AgentManager {
       cwd: agent.cwd,
       provider: agent.provider,
       modelId: opts.modelId,
+      thinkingLevel: agent.thinkingLevel,
       permissionMode: opts.permissionMode,
       systemPrompt: opts.systemPrompt,
       mcpDisabled: opts.mcpDisabled,

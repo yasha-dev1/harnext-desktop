@@ -50,6 +50,9 @@ const api: DesktopApi = {
     create: (path: string) => ipcRenderer.invoke('projects:create', path),
     remove: (id: number) => ipcRenderer.invoke('projects:remove', id),
     touch: (id: number) => ipcRenderer.invoke('projects:touch', id),
+    branches: (id: number) => ipcRenderer.invoke('projects:branches', id),
+    checkoutBranch: (id: number, branch: string) =>
+      ipcRenderer.invoke('projects:checkoutBranch', id, branch),
     dockerStatus: () => ipcRenderer.invoke('docker:status'),
     detectEnv: (id: number) => ipcRenderer.invoke('projects:detectEnv', id),
     setEnvConfig: (id: number, patch: Partial<ProjectEnvConfig>) =>

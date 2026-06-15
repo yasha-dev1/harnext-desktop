@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
+import type { BranchList, DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
 
 export function runGit(
   args: string[],
@@ -44,6 +44,27 @@ export function hasRemote(path: string, name = 'origin'): boolean {
     .stdout.split('\n')
     .map((s) => s.trim())
     .includes(name)
+}
+
+/** Best-effort `git fetch --prune` (network, so time-boxed); errors are ignored. */
+export function fetchRemote(path: string, name = 'origin'): void {
+  if (!hasRemote(path, name)) return
+  spawnSync('git', ['fetch', '--prune', name], { cwd: path, encoding: 'utf-8', timeout: 15000 })
+}
+
+/**
+ * Local + remote branches a new agent can be based on. Agent worktree branches
+ * (`agent/*`) and `origin/HEAD` are filtered out as noise.
+ */
+export function listBranches(path: string): BranchList {
+  const refs = (pattern: string): string[] =>
+    runGit(['for-each-ref', '--format=%(refname:short)', pattern], path)
+      .stdout.split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  const local = refs('refs/heads').filter((b) => !b.startsWith('agent/'))
+  const remote = refs('refs/remotes').filter((b) => !b.endsWith('/HEAD'))
+  return { current: currentBranch(path), local, remote }
 }
 
 /** The remote's default branch (origin/HEAD), falling back to main/master/HEAD. */
@@ -147,7 +168,10 @@ export function createWorktree(
   projectPath: string,
   name: string,
   agentId: string,
-  root: string = DEFAULT_WORKTREE_ROOT
+  root: string = DEFAULT_WORKTREE_ROOT,
+  // Ref the worktree branches off — a local branch, a remote-tracking branch
+  // (`origin/develop`), or any commit-ish. Defaults to the project's HEAD.
+  baseRef: string = 'HEAD'
 ): WorktreeInfo {
   const base = slugify(name)
   const collides = (slug: string): boolean =>
@@ -156,11 +180,59 @@ export function createWorktree(
   const branch = `agent/${slug}`
   const path = join(root, slug)
   mkdirSync(root, { recursive: true })
-  const r = runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], projectPath)
+  const r = runGit(['worktree', 'add', '-b', branch, path, baseRef || 'HEAD'], projectPath)
   if (r.exit !== 0) {
     throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)
   }
   return { path, branch }
+}
+
+/** The worktree path a local branch is checked out in, or null. */
+export function worktreeForBranch(repoPath: string, branch: string): string | null {
+  const out = runGit(['worktree', 'list', '--porcelain'], repoPath).stdout
+  let path: string | null = null
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) path = line.slice('worktree '.length).trim()
+    else if (line.startsWith('branch ')) {
+      const ref = line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '')
+      if (ref === branch && path) return path
+    }
+  }
+  return null
+}
+
+/**
+ * Check `branch` out into a worktree under `root` and return it — the project's
+ * "active branch" worktree for #96. A branch can live in only one worktree, so:
+ *   - already checked out (incl. the main repo) → reuse that worktree path;
+ *   - a remote-only ref (`origin/foo`) → create a local tracking branch;
+ *   - an existing local branch → add a worktree on it.
+ * The main checkout is never modified.
+ */
+export function openBranchWorktree(
+  repoPath: string,
+  branch: string,
+  root: string = DEFAULT_WORKTREE_ROOT
+): WorktreeInfo {
+  runGit(['worktree', 'prune'], repoPath)
+  const isRemote = branch.includes('/') && !branchExists(repoPath, branch)
+  const local = isRemote ? branch.replace(/^[^/]+\//, '') : branch
+  const existing = worktreeForBranch(repoPath, local)
+  if (existing) return { path: existing, branch: local }
+  mkdirSync(root, { recursive: true })
+  let path = join(root, `branch-${slugify(local)}`)
+  for (let n = 2; existsSync(path); n++) path = join(root, `branch-${slugify(local)}-${n}`)
+  const args = isRemote
+    ? ['worktree', 'add', '--track', '-b', local, path, branch]
+    : ['worktree', 'add', path, local]
+  const r = runGit(args, repoPath)
+  if (r.exit !== 0) {
+    throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)
+  }
+  return { path, branch: local }
 }
 
 export function removeWorktree(

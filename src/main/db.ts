@@ -1,7 +1,17 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join, basename } from 'node:path'
+import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
+
+/** A friendly default identity derived from the machine, not hardcoded. */
+function defaultDisplayName(): string {
+  try {
+    return userInfo().username || 'You'
+  } catch {
+    return 'You'
+  }
+}
 import type {
   AgentMeta,
   AgentMode,
@@ -176,6 +186,12 @@ const MIGRATIONS = [
   // v4 — image attachments on a user message (JSON array of data URLs)
   `
   ALTER TABLE messages ADD COLUMN images TEXT;
+  `,
+  // v5 — branch switcher (#96): the worktree a project's context is pointed at.
+  // Null = the main checkout. Agents and the env then run in this worktree.
+  `
+  ALTER TABLE projects ADD COLUMN active_worktree_path TEXT;
+  ALTER TABLE projects ADD COLUMN active_branch TEXT;
   `
 ]
 
@@ -213,10 +229,12 @@ export function initDb(): void {
 const SETTINGS_DEFAULTS: AppSettings = {
   onboarded: false,
   theme: 'dark',
+  displayName: defaultDisplayName(),
   provider: 'anthropic',
   model: 'claude-sonnet-4-6',
   smart: 'claude-opus-4-8',
   executor: 'claude-sonnet-4-6',
+  thinkingLevel: 'medium',
   mode: 'acceptEdits',
   editor: 'VS Code',
   openOnDone: false,
@@ -269,6 +287,8 @@ interface ProjectRow {
   last_opened_at: number
   created_at: number
   env_config: string | null
+  active_worktree_path: string | null
+  active_branch: string | null
 }
 
 function toProject(r: ProjectRow): Project {
@@ -288,8 +308,30 @@ function toProject(r: ProjectRow): Project {
     isGit: r.is_git === 1,
     lastOpenedAt: r.last_opened_at,
     createdAt: r.created_at,
-    envConfig
+    envConfig,
+    activeWorktreePath: r.active_worktree_path,
+    activeBranch: r.active_branch
   }
+}
+
+/** The directory a project's work happens in — its active branch worktree, or
+ *  the main checkout when none is pinned. Used as the repo cwd for agents/env. */
+export function projectCwd(p: Pick<Project, 'path' | 'activeWorktreePath'>): string {
+  return p.activeWorktreePath ?? p.path
+}
+
+/** Pin (or clear, with nulls) the worktree a project's context points at. */
+export function setActiveWorktree(
+  id: number,
+  worktreePath: string | null,
+  branch: string | null
+): Project | undefined {
+  db.prepare('UPDATE projects SET active_worktree_path = ?, active_branch = ? WHERE id = ?').run(
+    worktreePath,
+    branch,
+    id
+  )
+  return getProject(id)
 }
 
 export function listProjects(): Project[] {

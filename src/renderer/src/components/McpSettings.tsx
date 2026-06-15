@@ -260,7 +260,11 @@ export default function McpSettings({ cwd }: { cwd: string | null }): JSX.Elemen
             onCancel={() => setAdding(false)}
           />
         ) : (
-          <button className="btn" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>
+          <button
+            className="btn"
+            style={{ margin: '12px 14px 14px' }}
+            onClick={() => setAdding(true)}
+          >
             <Icon.plus size={14} />
             Add server
           </button>

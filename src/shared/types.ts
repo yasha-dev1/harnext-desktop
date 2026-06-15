@@ -19,6 +19,10 @@ export interface Project {
   createdAt: number
   /** Docker sandbox config, detected on add. null = never analyzed (pre-feature projects). */
   envConfig: ProjectEnvConfig | null
+  /** Branch switcher (#96): worktree the project's context is pointed at. Null = main checkout. */
+  activeWorktreePath: string | null
+  /** The branch checked out in {@link activeWorktreePath}; null = on the main checkout. */
+  activeBranch: string | null
 }
 
 // ── project environment / docker sandbox ─────────────────────────────
@@ -223,13 +227,24 @@ export interface LoopRun {
 }
 
 // ── settings ─────────────────────────────────────────────────────────
+/**
+ * Reasoning effort passed to the model. Mirrors `@harnext/core`'s `ThinkingLevel`
+ * (`createAgentSession({ thinkingLevel })`); core/pi-ai clamp it down to whatever
+ * the chosen model actually supports, so any value is safe for any model.
+ */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface AppSettings {
   onboarded: boolean
   theme: 'dark' | 'light'
+  /** Display name shown in the sidebar; defaults to the OS username. */
+  displayName: string
   provider: string
   model: string
   smart: string
   executor: string
+  /** How hard the model reasons before answering. */
+  thinkingLevel: ThinkingLevel
   mode: PermissionMode
   editor: string
   openOnDone: boolean
@@ -301,8 +316,19 @@ export interface StartAgentInput {
   model?: string
   smart?: string
   executor?: string
+  thinkingLevel?: ThinkingLevel
   permissionMode?: PermissionMode
   provider?: string
+  /** Git ref the agent's worktree branches off. Unset = the project's HEAD. */
+  baseBranch?: string
+}
+
+/** Branches a new agent can be based on (local + remote-tracking), for the picker. */
+export interface BranchList {
+  /** The project's current branch, used as the default base. */
+  current: string | null
+  local: string[]
+  remote: string[]
 }
 
 export interface LoopInput {
@@ -399,6 +425,10 @@ export interface DesktopApi {
     create(path: string): Promise<Project>
     remove(id: number): Promise<void>
     touch(id: number): Promise<void>
+    /** Fetch from the remote (best-effort) and list local + remote branches. */
+    branches(id: number): Promise<BranchList>
+    /** Point the project context at `branch` (checked out into a worktree). */
+    checkoutBranch(id: number, branch: string): Promise<Project>
     /** Probe the host for Docker + Compose availability. */
     dockerStatus(): Promise<DockerStatus>
     /** Re-run compose detection for a project, preserving the user's enable choice. */

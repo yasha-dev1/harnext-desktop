@@ -14,6 +14,7 @@ import type {
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { EffortPicker } from '../components/EffortPicker'
 import { EditorLogo } from '../components/EditorLogo'
 import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
@@ -114,6 +115,15 @@ function ModelsTab({
             value={settings.model}
             onChange={(v) => save({ model: v })}
             models={models}
+          />
+        </Row>
+        <Row
+          label="Reasoning effort"
+          desc="How hard the model thinks before answering. Higher is more thorough but slower and pricier; unsupported models clamp to what they allow."
+        >
+          <EffortPicker
+            value={settings.thinkingLevel}
+            onChange={(v) => save({ thinkingLevel: v })}
           />
         </Row>
         <Row label="Edit handling" desc="What the agent may do without asking.">
@@ -711,6 +721,48 @@ function PathField({
   )
 }
 
+/** A plain single-line text field that commits a non-empty value on blur/Enter. */
+function TextField({
+  value,
+  placeholder,
+  icon,
+  onSave
+}: {
+  value: string
+  placeholder?: string
+  icon?: ReactNode
+  onSave: (v: string) => void
+}): JSX.Element {
+  const [v, setV] = useState(value)
+  // Re-sync when the saved value changes externally (adjust-on-render).
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    setV(value)
+  }
+  // Only persist a non-empty change; clearing the field reverts on blur.
+  const commit = (next: string): void => {
+    const t = next.trim()
+    if (t && t !== value) onSave(t)
+  }
+  return (
+    <span className="field">
+      {icon && <span className="field-ic">{icon}</span>}
+      <input
+        type="text"
+        spellCheck={false}
+        value={v}
+        placeholder={placeholder}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => commit(v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit(v)
+        }}
+      />
+    </span>
+  )
+}
+
 function GeneralTab({
   settings,
   save
@@ -724,6 +776,24 @@ function GeneralTab({
   const doneSound = SOUNDS.some((s) => s.id === settings.doneSound) ? settings.doneSound : 'chime'
   return (
     <div className="set-stack">
+      <div className="set-card">
+        <div className="set-card-head">
+          <Icon.user size={15} />
+          <h3>Identity</h3>
+        </div>
+        <Row
+          label="Display name"
+          desc="Shown in the sidebar. Defaults to your machine username; set whatever you like."
+        >
+          <TextField
+            value={settings.displayName}
+            placeholder="Your name"
+            icon={<Icon.user size={15} />}
+            onSave={(v) => save({ displayName: v })}
+          />
+        </Row>
+      </div>
+
       <div className="set-card">
         <div className="set-card-head">
           <Icon.external size={15} />

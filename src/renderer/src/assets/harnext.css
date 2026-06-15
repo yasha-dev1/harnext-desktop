@@ -14,8 +14,10 @@
   --line-2: oklch(0.37 0.012 270);
   --tx-0: oklch(0.96 0.004 270);
   --tx-1: oklch(0.74 0.008 270);
-  --tx-2: oklch(0.58 0.008 270);
-  --tx-3: oklch(0.46 0.008 270);
+  /* tx-2/tx-3 lightened to clear WCAG AA (>=4.5:1) on --bg-0 and --bg-2; the old
+     0.58/0.46 were borderline/failing (see #94). Hierarchy preserved: 1 > 2 > 3. */
+  --tx-2: oklch(0.66 0.008 270);
+  --tx-3: oklch(0.62 0.008 270);
   --ok: #34d399;
   --err: #f8736a;
   --warn: #f5b642;
@@ -57,8 +59,10 @@ html[data-appearance='light'] {
   --line-2: oklch(0.8 0.011 270);
   --tx-0: oklch(0.24 0.012 270);
   --tx-1: oklch(0.4 0.011 270);
-  --tx-2: oklch(0.54 0.01 270);
-  --tx-3: oklch(0.66 0.009 270);
+  /* Light-theme mirror of #94: muted grays darkened to clear WCAG AA on the
+     near-white backgrounds (old 0.54/0.66 were borderline/failing). 1 > 2 > 3. */
+  --tx-2: oklch(0.48 0.01 270);
+  --tx-3: oklch(0.52 0.009 270);
 }
 html[data-appearance='light'] body {
   background: #d9d8de;
@@ -241,6 +245,30 @@ a {
   color: var(--tx-1);
   font-weight: 500;
 }
+/* Branch switcher (#96) */
+.tb-branch-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.tb-branch.pinned b {
+  color: var(--p-text);
+}
+.tb-pop-branch {
+  width: 280px;
+}
+.tb-branch-ic {
+  display: inline-flex;
+  color: var(--tx-2);
+  flex: none;
+}
+.tb-pop-msg {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--tx-2);
+}
+.tick.spin {
+  animation: pr-rot 0.8s linear infinite;
+}
 .tb-spacer {
   flex: 1;
   height: 100%;
@@ -347,8 +375,13 @@ a {
 .tb-pop-meta {
   min-width: 0;
   flex: 1;
+  /* Block-level column so name/path stack and the ellipsis below applies —
+     inline spans ignore overflow/text-overflow, letting long paths overflow. */
+  display: flex;
+  flex-direction: column;
 }
 .tb-pop-nm {
+  display: block;
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -356,6 +389,7 @@ a {
   text-overflow: ellipsis;
 }
 .tb-pop-pa {
+  display: block;
   font-size: 10.5px;
   color: var(--tx-2);
   white-space: nowrap;
@@ -734,6 +768,13 @@ html[data-density='compact'] .body {
   gap: 9px;
   margin-top: 6px;
   padding: 8px 11px;
+  width: 100%;
+  text-align: left;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+.aside-user:hover {
+  background: var(--bg-2);
 }
 .aside-av {
   width: 28px;
@@ -2503,7 +2544,9 @@ body.col-resizing {
   border-color: color-mix(in oklab, var(--err), transparent 60%);
 }
 .mcp-form {
-  margin: 12px 14px 0;
+  /* Bottom margin matches the top/sides so the form isn't flush against the
+     card's bottom border (#91). */
+  margin: 12px 14px 14px;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
