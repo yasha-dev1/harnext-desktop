@@ -407,6 +407,8 @@ export interface DesktopApi {
     list(projectId: number): Promise<AgentMeta[]>
     start(input: StartAgentInput): Promise<AgentMeta>
     prompt(agentId: string, text: string, images?: string[]): Promise<void>
+    /** Bring an ended conversation back to life (rehydrate session + sandbox). */
+    resume(agentId: string): Promise<void>
     abort(agentId: string): Promise<void>
     remove(agentId: string): Promise<void>
     timeline(agentId: string): Promise<TimelineItem[]>

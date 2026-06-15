@@ -6,6 +6,7 @@ import {
   getStoredKey,
   parseGoalVerdict,
   setProviderEnv,
+  type AgentMessage,
   type AgentSession,
   type AgentSessionEventListener,
   type CommandExecutor
@@ -18,6 +19,7 @@ import type {
   Role,
   SandboxInfo,
   StartAgentInput,
+  TimelineItem,
   WorktreeDiff
 } from '../../shared/types'
 import * as db from '../db'
@@ -73,6 +75,48 @@ export function ensureProviderEnv(providerId: string): void {
 const TEXT_FLUSH_MS = 50
 const DIFF_DEBOUNCE_MS = 900
 const RESULT_PREVIEW_CHARS = 4000
+
+const ZERO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+}
+
+/**
+ * Rebuild a best-effort `AgentMessage[]` transcript from a stored timeline, to
+ * seed a resumed session via `createAgentSession({ initialMessages })`. Only the
+ * conversational messages are seeded (user → user, plan/exec/eval → assistant);
+ * `convertToLlm` keeps the user/assistant text, so the model gets the prior
+ * context. Tool turns are omitted — the model re-runs tools as needed.
+ */
+function buildInitialMessages(
+  timeline: TimelineItem[],
+  provider: string,
+  model: string
+): AgentMessage[] {
+  const out: AgentMessage[] = []
+  for (const item of timeline) {
+    if (item.kind !== 'message' || !item.content.trim()) continue
+    if (item.role === 'user') {
+      out.push({ role: 'user', content: item.content, timestamp: item.createdAt })
+    } else {
+      out.push({
+        role: 'assistant',
+        content: [{ type: 'text', text: item.content }],
+        api: 'resumed',
+        provider,
+        model,
+        usage: ZERO_USAGE,
+        stopReason: 'stop',
+        timestamp: item.createdAt
+      })
+    }
+  }
+  return out
+}
 
 const WORKTREE_NAME_PROMPT =
   'You name git branches for coding tasks. Reply with ONLY the branch name: ' +
@@ -415,6 +459,91 @@ export class AgentManager {
       .catch((err: unknown) => this.settle(agent, err instanceof Error ? err.message : String(err)))
   }
 
+  /**
+   * Bring an ended conversation back to life: rebuild a `LiveAgent` from the
+   * stored meta, seed a fresh session with the prior transcript (harnext#46's
+   * `initialMessages`), and re-create the worktree's Docker sandbox if enabled.
+   * The user's next message then flows through the normal `prompt` path.
+   */
+  async resume(agentId: string): Promise<void> {
+    if (this.live.has(agentId)) return // already live — nothing to resume
+    const meta = db.getAgent(agentId, false)
+    if (!meta) throw new Error('Agent not found')
+    const project = db.getProject(meta.projectId)
+    if (!project) throw new Error('Project not found')
+
+    const settings = db.getSettings()
+    // Provider isn't stored per-agent; fall back to the current default.
+    const provider = settings.provider
+    ensureProviderEnv(provider)
+    const cwd = meta.worktreePath ?? project.path
+    const execModel = meta.execModel ?? meta.modelId ?? settings.model
+
+    const agent: LiveAgent = {
+      id: agentId,
+      projectId: meta.projectId,
+      projectPath: project.path,
+      isGit: project.isGit,
+      mode: meta.mode,
+      worktreePath: meta.worktreePath,
+      branch: meta.branch,
+      cwd,
+      permissionMode: meta.permissionMode,
+      smartModel: meta.smartModel,
+      execModel,
+      provider,
+      executor: null,
+      execCwd: undefined,
+      sandbox: null,
+      sandboxStatus: 'off',
+      sessions: [],
+      mainSession: null,
+      diffTracker: new DiffTracker(cwd),
+      seq: 1,
+      partialText: '',
+      partialRole: 'exec',
+      textDirty: false,
+      flushTimer: null,
+      diffTimer: null,
+      abortRequested: false,
+      lastStopReason: null,
+      lastErrorMessage: null,
+      lastAssistantText: '',
+      onSettled: undefined
+    }
+    this.live.set(agentId, agent)
+
+    const timeline = db.getTimeline(agentId)
+    // Continue numbering after the stored transcript.
+    agent.seq = timeline.reduce((m, t) => Math.max(m, t.seq), 0) + 1
+    const initialMessages = buildInitialMessages(timeline, provider, execModel)
+
+    this.setStatus(agentId, 'running', 'Resuming…')
+    try {
+      // Best-effort sandbox respawn — never hard-block resume on it (#57).
+      await this.prepareSandbox(agent, project)
+      const session = await this.createSession(agent, {
+        modelId: execModel,
+        role: 'exec',
+        permissionMode: agent.permissionMode,
+        initialMessages
+      })
+      agent.mainSession = session
+      this.setStatus(agentId, 'input', 'Resumed — continue the conversation')
+      this.send({ agentId, type: 'agents-changed', projectId: meta.projectId })
+    } catch (err) {
+      this.live.delete(agentId)
+      this.setStatus(
+        agentId,
+        'failed',
+        'Resume failed',
+        err instanceof Error ? err.message : String(err)
+      )
+      this.send({ agentId, type: 'agents-changed', projectId: meta.projectId })
+      throw err
+    }
+  }
+
   abort(agentId: string): void {
     const agent = this.live.get(agentId)
     if (!agent) return
@@ -465,7 +594,12 @@ export class AgentManager {
     try {
       ensureProviderEnv(provider)
       const cwd = meta.worktreePath ?? project.path
-      const gen = await generatePrDetails(provider, model, cwd, this.buildPrContext(agentId, meta.title))
+      const gen = await generatePrDetails(
+        provider,
+        model,
+        cwd,
+        this.buildPrContext(agentId, meta.title)
+      )
       if (gen) return { title: gen.title, base, body: gen.body || fallback.body }
     } catch {
       /* best-effort — fall through to the default */
@@ -481,8 +615,7 @@ export class AgentManager {
       .reverse()
       .find((t) => t.kind === 'message' && t.role !== 'user')
     const task = (firstUser?.kind === 'message' ? firstUser.content : fallbackTask).slice(0, 1500)
-    const summary =
-      lastAssistant?.kind === 'message' ? lastAssistant.content.slice(0, 1500) : ''
+    const summary = lastAssistant?.kind === 'message' ? lastAssistant.content.slice(0, 1500) : ''
     const diff = this.getDiff(agentId)
     const files = diff.files.map((f) => `- ${f.path} (+${f.add}/-${f.del})`).join('\n')
     return [
@@ -648,6 +781,8 @@ export class AgentManager {
       permissionMode: 'acceptEdits' | 'plan' | 'bypassPermissions'
       systemPrompt?: string
       mcpDisabled?: boolean
+      /** Seed history when resuming an ended conversation (harnext#46). */
+      initialMessages?: AgentMessage[]
     }
   ): Promise<AgentSession> {
     const { session } = await createAgentSession({
@@ -658,6 +793,9 @@ export class AgentManager {
       systemPrompt: opts.systemPrompt,
       mcpDisabled: opts.mcpDisabled,
       quiet: true,
+      ...(opts.initialMessages
+        ? { initialMessages: opts.initialMessages, sessionId: agent.id }
+        : {}),
       // Sandbox: run shell commands in the container while read/edit/write stay
       // on the host worktree (bind-mounted, so the container sees the same files).
       ...(agent.executor ? { executor: agent.executor, execCwd: agent.execCwd } : {})

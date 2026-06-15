@@ -177,14 +177,30 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
 function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[] }): JSX.Element {
   const streaming = useAppStore((s) => s.streaming[agent.id])
   const sendPrompt = useAppStore((s) => s.sendPrompt)
+  const resumeAgent = useAppStore((s) => s.resumeAgent)
   const [reply, setReply] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [resuming, setResuming] = useState(false)
   const att = useAttachments()
   const scrollRef = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
 
   const isRunning = agent.status === 'running'
   const canReply = agent.live && !isRunning
+  // An ended (non-live) conversation can be brought back to life.
+  const ended = !agent.live
+
+  const resume = async (): Promise<void> => {
+    setResuming(true)
+    setSendError(null)
+    try {
+      await resumeAgent(agent.id)
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setResuming(false)
+    }
+  }
 
   useEffect(() => {
     const el = scrollRef.current
@@ -258,35 +274,43 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
           {sendError || att.error}
         </div>
       )}
-      <div className="reply-wrap" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
-        <AttachmentBar items={att.items} onRemove={att.remove} />
-        <div className="reply">
-          <AttachButton onPick={att.addFiles} disabled={!canReply} />
-          <input
-            placeholder={
-              !agent.live
-                ? 'Session ended — start a new agent to continue'
-                : isRunning
+      {ended ? (
+        <div className="resume-bar">
+          <span>This conversation has ended.</span>
+          <button className="btn primary" onClick={() => void resume()} disabled={resuming}>
+            <Icon.refresh size={14} />
+            {resuming ? 'Resuming…' : 'Resume conversation'}
+          </button>
+        </div>
+      ) : (
+        <div className="reply-wrap" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
+          <AttachmentBar items={att.items} onRemove={att.remove} />
+          <div className="reply">
+            <AttachButton onPick={att.addFiles} disabled={!canReply} />
+            <input
+              placeholder={
+                isRunning
                   ? 'Agent is working…'
                   : agent.status === 'input'
                     ? 'Answer the agent…'
                     : 'Send a follow-up… (paste or drop an image)'
-            }
-            disabled={!canReply}
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            onPaste={att.onPaste}
-            onKeyDown={(e) => {
-              // Ignore the Enter that commits an IME composition (CJK input),
-              // otherwise it sends a half-composed message.
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
-            }}
-          />
-          <button title="Send" onClick={() => void send()} disabled={!canReply}>
-            <Icon.send size={15} />
-          </button>
+              }
+              disabled={!canReply}
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              onPaste={att.onPaste}
+              onKeyDown={(e) => {
+                // Ignore the Enter that commits an IME composition (CJK input),
+                // otherwise it sends a half-composed message.
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send()
+              }}
+            />
+            <button title="Send" onClick={() => void send()} disabled={!canReply}>
+              <Icon.send size={15} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

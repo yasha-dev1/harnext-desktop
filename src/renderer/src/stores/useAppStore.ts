@@ -64,6 +64,8 @@ interface AppStore {
   loadAgents: (projectId: number) => Promise<void>
   startAgent: (input: StartAgentInput) => Promise<AgentMeta>
   sendPrompt: (agentId: string, text: string, images?: string[]) => Promise<void>
+  /** Bring an ended conversation back to life. */
+  resumeAgent: (agentId: string) => Promise<void>
   abortAgent: (agentId: string) => Promise<void>
   discardAgent: (agentId: string) => Promise<void>
   mergeAgent: (agentId: string) => Promise<void>
@@ -279,6 +281,12 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     sendPrompt: async (agentId, text, images) => {
       await window.api.agents.prompt(agentId, text, images)
+    },
+    resumeAgent: async (agentId) => {
+      const agent = get().agents[agentId]
+      await window.api.agents.resume(agentId)
+      // Reload so the agent reflects its now-live state (reply box re-enabled).
+      if (agent) await get().loadAgents(agent.projectId)
     },
 
     abortAgent: async (agentId) => {
