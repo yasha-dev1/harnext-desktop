@@ -18,7 +18,7 @@ import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
 import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
-import { currentBranch, isGitRepo } from './git'
+import { currentBranch, fetchRemote, isGitRepo, listBranches } from './git'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
 
@@ -175,6 +175,12 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     db.removeProject(id)
   })
   ipcMain.handle('projects:touch', (_e, id: number) => db.touchProject(id))
+  ipcMain.handle('projects:branches', (_e, id: number) => {
+    const project = db.getProject(id)
+    if (!project?.isGit) return { current: null, local: [], remote: [] }
+    fetchRemote(project.path) // best-effort; pulls in new remote branches
+    return listBranches(project.path)
+  })
   ipcMain.handle('docker:status', () => getDockerStatus())
   ipcMain.handle('projects:detectEnv', async (_e, id: number) => {
     const project = db.getProject(id)
