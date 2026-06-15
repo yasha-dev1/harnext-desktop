@@ -2504,7 +2504,9 @@ body.col-resizing {
   border-color: color-mix(in oklab, var(--err), transparent 60%);
 }
 .mcp-form {
-  margin: 12px 14px 0;
+  /* Bottom margin matches the top/sides so the form isn't flush against the
+     card's bottom border (#91). */
+  margin: 12px 14px 14px;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
