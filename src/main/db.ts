@@ -224,7 +224,8 @@ const SETTINGS_DEFAULTS: AppSettings = {
   worktreeRoot: DEFAULT_WORKTREE_ROOT,
   soundOnDone: true,
   doneSound: 'chime',
-  customSoundPath: ''
+  customSoundPath: '',
+  contextEngineUrl: 'https://engine.harnext.com'
 }
 
 export function getSettings(): AppSettings {
