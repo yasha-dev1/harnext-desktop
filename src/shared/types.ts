@@ -226,6 +226,8 @@ export interface LoopRun {
 export interface AppSettings {
   onboarded: boolean
   theme: 'dark' | 'light'
+  /** Display name shown in the sidebar; defaults to the OS username. */
+  displayName: string
   provider: string
   model: string
   smart: string

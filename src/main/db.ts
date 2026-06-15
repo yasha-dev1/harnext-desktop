@@ -1,7 +1,17 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join, basename } from 'node:path'
+import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
+
+/** A friendly default identity derived from the machine, not hardcoded. */
+function defaultDisplayName(): string {
+  try {
+    return userInfo().username || 'You'
+  } catch {
+    return 'You'
+  }
+}
 import type {
   AgentMeta,
   AgentMode,
@@ -213,6 +223,7 @@ export function initDb(): void {
 const SETTINGS_DEFAULTS: AppSettings = {
   onboarded: false,
   theme: 'dark',
+  displayName: defaultDisplayName(),
   provider: 'anthropic',
   model: 'claude-sonnet-4-6',
   smart: 'claude-opus-4-8',
