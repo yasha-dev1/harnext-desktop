@@ -38,6 +38,11 @@ linux:
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
+snap:
+  # Upload the .snap to the GitHub release (like AppImage/deb) instead of the
+  # Snap Store, whose publisher needs snapcraft + store credentials that aren't
+  # on the CI runners — every tagged Linux job failed at that step (#75).
+  publish: github
 npmRebuild: false
 publish:
   provider: github
