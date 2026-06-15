@@ -673,12 +673,13 @@ function PathField({
     setLastValue(value)
     setV(value)
   }
+  const pickPath = useAppStore((s) => s.pickPath)
   const commit = (next: string): void => {
     const t = next.trim()
     if (t && t !== value) onSave(t)
   }
   const browse = async (): Promise<void> => {
-    const dir = await window.api.pickDirectory()
+    const dir = await pickPath({ mode: 'dir' })
     if (dir) {
       setV(dir)
       onSave(dir)

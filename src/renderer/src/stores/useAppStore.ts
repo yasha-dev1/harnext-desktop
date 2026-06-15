@@ -49,6 +49,12 @@ interface AppStore {
   openProjectDialog: () => Promise<Project | null>
   removeProject: (id: number) => Promise<void>
 
+  // In-app file/folder picker (replaces the native OS dialog). `pickPath`
+  // resolves once the user selects a path or cancels (null), like a dialog.
+  picker: { mode: 'dir' | 'file'; resolve: (path: string | null) => void } | null
+  pickPath: (opts?: { mode?: 'dir' | 'file' }) => Promise<string | null>
+  resolvePicker: (path: string | null) => void
+
   dockerStatus: DockerStatus | null
   loadDockerStatus: () => Promise<void>
   detectProjectEnv: (id: number) => Promise<void>
@@ -199,11 +205,23 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     openProjectDialog: async () => {
-      const path = await window.api.pickDirectory()
+      const path = await get().pickPath({ mode: 'dir' })
       if (!path) return null
       const project = await window.api.projects.create(path)
       await get().loadProjects()
       return project
+    },
+
+    picker: null,
+    pickPath: (opts) =>
+      new Promise<string | null>((resolve) => {
+        set({ picker: { mode: opts?.mode ?? 'dir', resolve } })
+      }),
+    resolvePicker: (path) => {
+      const p = get().picker
+      if (!p) return
+      p.resolve(path)
+      set({ picker: null })
     },
 
     removeProject: async (id) => {
