@@ -29,6 +29,7 @@ const api: DesktopApi = {
   },
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   pickAudioFile: () => ipcRenderer.invoke('dialog:pickAudioFile'),
+  pickEnvFile: () => ipcRenderer.invoke('dialog:pickEnvFile'),
   readSound: (path: string) => ipcRenderer.invoke('sounds:read', path),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -58,7 +59,15 @@ const api: DesktopApi = {
     setEnvConfig: (id: number, patch: Partial<ProjectEnvConfig>) =>
       ipcRenderer.invoke('projects:setEnvConfig', id, patch),
     setEnvOverrides: (id: number, patch: EnvOverrides) =>
-      ipcRenderer.invoke('projects:setEnvOverrides', id, patch)
+      ipcRenderer.invoke('projects:setEnvOverrides', id, patch),
+    secrets: (id: number) => ipcRenderer.invoke('projects:secrets', id),
+    setSecret: (id: number, key: string, value: string) =>
+      ipcRenderer.invoke('projects:setSecret', id, key, value),
+    setSecretsBulk: (id: number, text: string) =>
+      ipcRenderer.invoke('projects:setSecretsBulk', id, text),
+    removeSecret: (id: number, key: string) => ipcRenderer.invoke('projects:removeSecret', id, key),
+    importSecretsFromEnv: (id: number, path?: string) =>
+      ipcRenderer.invoke('projects:importSecretsFromEnv', id, path)
   },
   agents: {
     list: (projectId: number) => ipcRenderer.invoke('agents:list', projectId),

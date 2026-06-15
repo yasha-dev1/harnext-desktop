@@ -119,7 +119,16 @@ async function waitForContainerReady(
 export async function bootstrapSandbox(
   env: ProjectEnvConfig,
   worktreePath: string,
-  projectName: string
+  projectName: string,
+  /**
+   * Secrets/env to interpolate (#123). The agent's worktree has no `.env` (it's
+   * gitignored), so without this every `${VAR}` resolves to blank. Pass `content`
+   * to materialize a temp env-file (used when inline secrets are present), or
+   * `path` to point compose at an existing file verbatim. Either way it's fed via
+   * `--env-file`, and `content` is written OUTSIDE the worktree so it can't be
+   * committed.
+   */
+  envFile?: { path?: string; content?: string }
 ): Promise<SandboxHandle> {
   if (!env.workspaceService) {
     throw new Error('Sandbox is enabled but no workspace service was detected in the compose file.')
@@ -132,6 +141,16 @@ export async function bootstrapSandbox(
   const overridePath = join(overrideDir, 'harnext.override.yml')
   writeFileSync(overridePath, buildOverride(env, hostPorts))
 
+  // Materialize inline secrets to a temp env-file inside overrideDir (never the
+  // worktree); an explicit path is used as-is. Cleaned up by teardown either way.
+  let envFilePath: string | undefined
+  if (envFile?.content != null && envFile.content !== '') {
+    envFilePath = join(overrideDir, 'harnext.env')
+    writeFileSync(envFilePath, envFile.content, { mode: 0o600 })
+  } else if (envFile?.path) {
+    envFilePath = envFile.path
+  }
+
   // Base compose files resolved against the worktree; the generated override last.
   const fileArgs = [
     ...env.composeFiles.flatMap((f) => ['-f', join(worktreePath, f)]),
@@ -142,6 +161,7 @@ export async function bootstrapSandbox(
     'compose',
     '--project-directory',
     worktreePath,
+    ...(envFilePath ? ['--env-file', envFilePath] : []),
     '-p',
     projectName,
     ...fileArgs
