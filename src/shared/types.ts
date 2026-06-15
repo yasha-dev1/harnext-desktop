@@ -305,6 +305,16 @@ export interface StartAgentInput {
   executor?: string
   permissionMode?: PermissionMode
   provider?: string
+  /** Git ref the agent's worktree branches off. Unset = the project's HEAD. */
+  baseBranch?: string
+}
+
+/** Branches a new agent can be based on (local + remote-tracking), for the picker. */
+export interface BranchList {
+  /** The project's current branch, used as the default base. */
+  current: string | null
+  local: string[]
+  remote: string[]
 }
 
 export interface LoopInput {
@@ -401,6 +411,8 @@ export interface DesktopApi {
     create(path: string): Promise<Project>
     remove(id: number): Promise<void>
     touch(id: number): Promise<void>
+    /** Fetch from the remote (best-effort) and list local + remote branches. */
+    branches(id: number): Promise<BranchList>
     /** Probe the host for Docker + Compose availability. */
     dockerStatus(): Promise<DockerStatus>
     /** Re-run compose detection for a project, preserving the user's enable choice. */

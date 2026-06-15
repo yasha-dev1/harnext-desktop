@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
-import type { PermissionMode, ProviderOption } from '@shared/types'
+import type { BranchList, PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
@@ -33,12 +33,20 @@ export default function Compose(): JSX.Element {
   const att = useAttachments()
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<ProviderOption[]>([])
+  // Base branch: `branches` is the fetched local/remote list; `base` is the user's
+  // explicit pick (null = use the project's current branch, i.e. today's behaviour).
+  const [branches, setBranches] = useState<BranchList | null>(null)
+  const [base, setBase] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     void window.api.providers.list().then(setProviders)
     taRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    if (project?.isGit) void window.api.projects.branches(projectId).then(setBranches)
+  }, [projectId, project?.isGit])
 
   const provider = settings?.provider
   useEffect(() => {
@@ -51,6 +59,14 @@ export default function Compose(): JSX.Element {
   const models = providerModels[settings.provider] ?? curated
   const isGoal = /(^|\s)\/goal\b/i.test(text)
 
+  // Base-branch picker: default to the project's current branch; the options are
+  // the fetched local + remote branches (current first), deduped.
+  const currentBranch = branches?.current ?? project.branch ?? ''
+  const baseValue = base ?? currentBranch
+  const branchOptions = [
+    ...new Set([currentBranch, ...(branches?.local ?? []), ...(branches?.remote ?? [])])
+  ].filter(Boolean)
+
   const start = async (): Promise<void> => {
     // Allow an image-only prompt (text or at least one attachment).
     if ((!text.trim() && att.items.length === 0) || starting) return
@@ -58,7 +74,9 @@ export default function Compose(): JSX.Element {
     setError(null)
     try {
       const images = att.items.map((a) => a.dataUrl)
-      const meta = await startAgent({ projectId, prompt: text.trim(), images })
+      // Only override when the user picked a branch other than the current one.
+      const baseBranch = baseValue && baseValue !== currentBranch ? baseValue : undefined
+      const meta = await startAgent({ projectId, prompt: text.trim(), images, baseBranch })
       setText('')
       att.clear()
       navigate(`/project/${projectId}/agent/${meta.id}`)
@@ -146,6 +164,25 @@ export default function Compose(): JSX.Element {
                 models={models}
                 onChange={(v) => void saveSettings({ model: v })}
               />
+            )}
+            {project.isGit && branchOptions.length > 0 && (
+              <>
+                <span
+                  className="ctl"
+                  title="Base branch — the agent's worktree is created from this ref"
+                >
+                  <Icon.branch size={14} />
+                  <span className="k">base</span>
+                </span>
+                <ModelPicker
+                  mono
+                  value={baseValue}
+                  models={branchOptions}
+                  onChange={(v) => setBase(v)}
+                  placeholder="Search branches…"
+                  icon={() => <Icon.branch size={13} />}
+                />
+              </>
             )}
             <span className="grow" />
             <button className="composer-start" onClick={() => void start()} disabled={starting}>

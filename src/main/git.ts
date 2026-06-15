@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
+import type { BranchList, DiffFile, DiffHunk, DiffLine, WorktreeDiff } from '../shared/types'
 
 export function runGit(
   args: string[],
@@ -44,6 +44,27 @@ export function hasRemote(path: string, name = 'origin'): boolean {
     .stdout.split('\n')
     .map((s) => s.trim())
     .includes(name)
+}
+
+/** Best-effort `git fetch --prune` (network, so time-boxed); errors are ignored. */
+export function fetchRemote(path: string, name = 'origin'): void {
+  if (!hasRemote(path, name)) return
+  spawnSync('git', ['fetch', '--prune', name], { cwd: path, encoding: 'utf-8', timeout: 15000 })
+}
+
+/**
+ * Local + remote branches a new agent can be based on. Agent worktree branches
+ * (`agent/*`) and `origin/HEAD` are filtered out as noise.
+ */
+export function listBranches(path: string): BranchList {
+  const refs = (pattern: string): string[] =>
+    runGit(['for-each-ref', '--format=%(refname:short)', pattern], path)
+      .stdout.split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  const local = refs('refs/heads').filter((b) => !b.startsWith('agent/'))
+  const remote = refs('refs/remotes').filter((b) => !b.endsWith('/HEAD'))
+  return { current: currentBranch(path), local, remote }
 }
 
 /** The remote's default branch (origin/HEAD), falling back to main/master/HEAD. */
@@ -147,7 +168,10 @@ export function createWorktree(
   projectPath: string,
   name: string,
   agentId: string,
-  root: string = DEFAULT_WORKTREE_ROOT
+  root: string = DEFAULT_WORKTREE_ROOT,
+  // Ref the worktree branches off — a local branch, a remote-tracking branch
+  // (`origin/develop`), or any commit-ish. Defaults to the project's HEAD.
+  baseRef: string = 'HEAD'
 ): WorktreeInfo {
   const base = slugify(name)
   const collides = (slug: string): boolean =>
@@ -156,7 +180,7 @@ export function createWorktree(
   const branch = `agent/${slug}`
   const path = join(root, slug)
   mkdirSync(root, { recursive: true })
-  const r = runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], projectPath)
+  const r = runGit(['worktree', 'add', '-b', branch, path, baseRef || 'HEAD'], projectPath)
   if (r.exit !== 0) {
     throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)
   }

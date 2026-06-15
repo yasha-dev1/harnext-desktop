@@ -278,7 +278,13 @@ export class AgentManager {
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
       const suggested = await generateWorktreeName(provider, model, project.path, cleanPrompt)
-      worktree = createWorktree(project.path, suggested ?? title, agentId, settings.worktreeRoot)
+      worktree = createWorktree(
+        project.path,
+        suggested ?? title,
+        agentId,
+        settings.worktreeRoot,
+        input.baseBranch
+      )
     }
     const cwd = worktree?.path ?? project.path
 
