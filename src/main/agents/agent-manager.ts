@@ -230,6 +230,8 @@ interface LiveAgent {
   mainSession: AgentSession | null
   diffTracker: DiffTracker
   seq: number
+  /** Steering messages queued while a turn is in flight (delivered at settle). */
+  steerQueue: string[]
   partialText: string
   partialRole: Role
   textDirty: boolean
@@ -316,6 +318,7 @@ export class AgentManager {
       mainSession: null,
       diffTracker: new DiffTracker(cwd),
       seq: 1,
+      steerQueue: [],
       partialText: '',
       partialRole: 'exec',
       textDirty: false,
@@ -397,10 +400,33 @@ export class AgentManager {
     return this.sandboxInfo(agent)
   }
 
+  /** Emit the agent's current pending-steer queue to the renderer. */
+  private emitSteers(agent: LiveAgent): void {
+    this.send({ agentId: agent.id, type: 'steers', steers: [...agent.steerQueue] })
+  }
+
+  /** Remove and return the last queued steer (Esc-to-recall for editing). */
+  recallSteer(agentId: string): string | null {
+    const agent = this.live.get(agentId)
+    if (!agent || agent.steerQueue.length === 0) return null
+    const text = agent.steerQueue.pop()!
+    this.emitSteers(agent)
+    return text
+  }
+
   async prompt(agentId: string, text: string, images?: string[]): Promise<void> {
     const agent = this.live.get(agentId)
     if (!agent?.mainSession) {
       throw new Error('This agent session has ended — start a new agent to continue.')
+    }
+    // Mid-run: queue the message as a steer; it's delivered at the next turn
+    // boundary (see settle). Images aren't carried on steers (text-only).
+    if (db.getAgent(agentId, true)?.status === 'running') {
+      const t = text.trim()
+      if (!t) return
+      agent.steerQueue.push(t)
+      this.emitSteers(agent)
+      return
     }
     const item = db.insertMessage(agentId, agent.seq++, 'user', text, null, images)
     this.send({ agentId, type: 'message', item })
@@ -794,6 +820,40 @@ export class AgentManager {
 
   private settle(agent: LiveAgent, runError?: string): void {
     if (!this.live.has(agent.id)) return
+
+    const aborted = agent.abortRequested || agent.lastStopReason === 'aborted'
+    const failed = !!runError || agent.lastStopReason === 'error'
+
+    // Steering: a turn just finished cleanly with messages queued. Deliver them
+    // on the same live session (no restart) — they become real user messages and
+    // continue the conversation — instead of settling to idle.
+    if (!aborted && !failed && agent.steerQueue.length > 0 && agent.mainSession) {
+      const steers = agent.steerQueue.splice(0)
+      this.emitSteers(agent)
+      for (const text of steers) {
+        const item = db.insertMessage(agent.id, agent.seq++, 'user', text)
+        this.send({ agentId: agent.id, type: 'message', item })
+      }
+      this.pushDiff(agent)
+      this.setStatus(agent.id, 'running', 'Following your steer')
+      const session = agent.mainSession
+      void session
+        .prompt(steers.join('\n\n'))
+        .then(() => this.settle(agent))
+        .catch((err: unknown) =>
+          this.settle(agent, err instanceof Error ? err.message : String(err))
+        )
+      return
+    }
+
+    // The run ended (aborted/failed) with steers still queued — surface them so
+    // the user can resend; they were never delivered.
+    if (agent.steerQueue.length > 0) {
+      const texts = agent.steerQueue.splice(0)
+      this.emitSteers(agent)
+      this.send({ agentId: agent.id, type: 'steers-undelivered', texts })
+    }
+
     const diff = this.pushDiff(agent)
     const hasChanges = diff.add + diff.del > 0
 
