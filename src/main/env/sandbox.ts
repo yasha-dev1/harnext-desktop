@@ -71,9 +71,50 @@ export function buildOverride(env: ProjectEnvConfig, hostPorts: Record<string, n
 }
 
 /**
+ * Poll a container until it's running and (if it declares a healthcheck) healthy.
+ * Used instead of a whole-stack `up --wait`, which aborts the moment ANY container
+ * in the project exits — even cleanly (exit 0) — which one-shot/short-lived
+ * services (build, warmup, one-off workers) do by design.
+ */
+async function waitForContainerReady(
+  container: string,
+  service: string,
+  timeoutMs: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let status: string | undefined
+    let health: string | undefined
+    try {
+      const insp = await pExecFile('docker', ['inspect', container])
+      const info = (
+        JSON.parse(insp.stdout) as Array<{
+          State?: { Status?: string; Health?: { Status?: string } }
+        }>
+      )[0]
+      status = info?.State?.Status
+      health = info?.State?.Health?.Status
+    } catch {
+      /* not inspectable yet — retry until the deadline */
+    }
+    if (status === 'running' && (!health || health === 'healthy')) return
+    if (status === 'exited' || status === 'dead') {
+      throw new Error(`workspace service "${service}" ${status} before it became ready`)
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `workspace service "${service}" not ready within ${Math.round(timeoutMs / 1000)}s` +
+          (health ? ` (health: ${health})` : '')
+      )
+    }
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+}
+
+/**
  * Bring up the worktree's compose stack in its own isolated project and return a
  * handle for execing into the workspace service + tearing it down. Blocks until
- * services are healthy (`up --wait`), so the agent starts on a ready environment.
+ * the workspace container is ready, so the agent starts on a usable environment.
  */
 export async function bootstrapSandbox(
   env: ProjectEnvConfig,
@@ -127,15 +168,24 @@ export async function bootstrapSandbox(
   }
 
   try {
-    await pExecFile(
-      'docker',
-      [...composeArgs, 'up', '-d', '--build', '--wait', '--wait-timeout', String(timeoutSec)],
-      { timeout: (timeoutSec + 60) * 1000, maxBuffer: 32 * 1024 * 1024 }
-    )
+    // Build + start the whole stack, but do NOT gate on `--wait` here: `docker
+    // compose up --wait` aborts the moment ANY container in the project exits —
+    // even cleanly (exit 0) — and real stacks have one-shot/short-lived services
+    // (build, warmup, one-off workers) that exit by design. `up -d` still honours
+    // depends_on ordering (incl. service_completed_successfully), so the
+    // workspace only starts once its own dependencies are ready.
+    await pExecFile('docker', [...composeArgs, 'up', '-d', '--build'], {
+      timeout: (timeoutSec + 60) * 1000,
+      maxBuffer: 32 * 1024 * 1024
+    })
 
     const psq = await pExecFile('docker', [...composeArgs, 'ps', '-q', env.workspaceService])
     const container = psq.stdout.trim().split('\n').filter(Boolean)[0]
     if (!container) throw new Error(`workspace service "${env.workspaceService}" has no container`)
+
+    // Gate readiness on the workspace container (where the agent execs) instead
+    // of the whole stack, so an unrelated service exiting can't fail the sandbox.
+    await waitForContainerReady(container, env.workspaceService, timeoutSec * 1000)
 
     // execCwd = where the worktree is mounted in the container (so the agent's
     // shell lands on the source). Prefer the bind mount's destination, then the
