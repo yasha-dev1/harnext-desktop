@@ -50,7 +50,6 @@ function Shell(): JSX.Element {
   return (
     <div className="win">
       <Titlebar projects={projects} current={current} settingsActive={settingsActive} />
-      <GlobalFilePicker />
       <Routes>
         <Route path="/" element={<OpenProjectPage />} />
         <Route path="/project/:projectId" element={<ProjectShell />}>
@@ -80,6 +79,9 @@ export default function App(): JSX.Element {
   return (
     <HashRouter>
       <Shell />
+      {/* Mounted at the root so the picker overlay is available on every screen,
+          including onboarding (where Shell returns early). See #82. */}
+      <GlobalFilePicker />
     </HashRouter>
   )
 }
