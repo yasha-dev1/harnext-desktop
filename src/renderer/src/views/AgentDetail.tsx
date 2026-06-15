@@ -177,20 +177,36 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
 function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[] }): JSX.Element {
   const streaming = useAppStore((s) => s.streaming[agent.id])
   const sendPrompt = useAppStore((s) => s.sendPrompt)
+  const resumeAgent = useAppStore((s) => s.resumeAgent)
   const recallSteer = useAppStore((s) => s.recallSteer)
   const pendingSteers = useAppStore((s) => s.steers[agent.id]) ?? []
   const undelivered = useAppStore((s) => s.undeliveredSteers[agent.id]) ?? []
   const [reply, setReply] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [resuming, setResuming] = useState(false)
   const att = useAttachments()
   const scrollRef = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
 
   const isRunning = agent.status === 'running'
+  // An ended (non-live) conversation can be brought back to life.
+  const ended = !agent.live
   // Composing is allowed whenever the session is live: idle → a reply/answer,
   // mid-run → a steering message queued for the next turn boundary.
   const canCompose = agent.live
   const isSteer = isRunning
+
+  const resume = async (): Promise<void> => {
+    setResuming(true)
+    setSendError(null)
+    try {
+      await resumeAgent(agent.id)
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setResuming(false)
+    }
+  }
 
   useEffect(() => {
     const el = scrollRef.current
@@ -279,56 +295,66 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
           {sendError || att.error}
         </div>
       )}
-      {undelivered.length > 0 && (
-        <div className="steer-undelivered">
-          ⋯ {undelivered.length} queued message{undelivered.length === 1 ? '' : 's'} not delivered —
-          resend if still needed:
-          {undelivered.map((t, i) => (
-            <span key={i} className="steer-text">
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
-      {pendingSteers.length > 0 && (
-        <div className="steer-pending" title="Queued — delivered at the next turn boundary">
-          {pendingSteers.map((t, i) => (
-            <div key={i} className="steer-line">
-              <span className="steer-dot">⋯</span>
-              {t}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="reply-wrap" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
-        <AttachmentBar items={att.items} onRemove={att.remove} />
-        <div className={'reply' + (isSteer ? ' steering' : '')}>
-          <AttachButton onPick={att.addFiles} disabled={!canCompose || isSteer} />
-          <input
-            placeholder={
-              !agent.live
-                ? 'Session ended — start a new agent to continue'
-                : isRunning
-                  ? 'Steer the agent… (queued for the next turn · Esc recalls)'
-                  : agent.status === 'input'
-                    ? 'Answer the agent…'
-                    : 'Send a follow-up… (paste or drop an image)'
-            }
-            disabled={!canCompose}
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            onPaste={att.onPaste}
-            onKeyDown={onComposerKey}
-          />
-          <button
-            title={isSteer ? 'Queue steer' : 'Send'}
-            onClick={() => void send()}
-            disabled={!canCompose}
-          >
-            <Icon.send size={15} />
+      {ended ? (
+        <div className="resume-bar">
+          <span>This conversation has ended.</span>
+          <button className="btn primary" onClick={() => void resume()} disabled={resuming}>
+            <Icon.refresh size={14} />
+            {resuming ? 'Resuming…' : 'Resume conversation'}
           </button>
         </div>
-      </div>
+      ) : (
+        <>
+          {undelivered.length > 0 && (
+            <div className="steer-undelivered">
+              ⋯ {undelivered.length} queued message{undelivered.length === 1 ? '' : 's'} not
+              delivered — resend if still needed:
+              {undelivered.map((t, i) => (
+                <span key={i} className="steer-text">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+          {pendingSteers.length > 0 && (
+            <div className="steer-pending" title="Queued — delivered at the next turn boundary">
+              {pendingSteers.map((t, i) => (
+                <div key={i} className="steer-line">
+                  <span className="steer-dot">⋯</span>
+                  {t}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="reply-wrap" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
+            <AttachmentBar items={att.items} onRemove={att.remove} />
+            <div className={'reply' + (isSteer ? ' steering' : '')}>
+              <AttachButton onPick={att.addFiles} disabled={!canCompose || isSteer} />
+              <input
+                placeholder={
+                  isRunning
+                    ? 'Steer the agent… (queued for the next turn · Esc recalls)'
+                    : agent.status === 'input'
+                      ? 'Answer the agent…'
+                      : 'Send a follow-up… (paste or drop an image)'
+                }
+                disabled={!canCompose}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onPaste={att.onPaste}
+                onKeyDown={onComposerKey}
+              />
+              <button
+                title={isSteer ? 'Queue steer' : 'Send'}
+                onClick={() => void send()}
+                disabled={!canCompose}
+              >
+                <Icon.send size={15} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

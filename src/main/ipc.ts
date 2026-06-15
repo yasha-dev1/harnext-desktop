@@ -231,6 +231,7 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   ipcMain.handle('agents:prompt', (_e, agentId: string, text: string, images?: string[]) =>
     manager.prompt(agentId, text, images)
   )
+  ipcMain.handle('agents:resume', (_e, agentId: string) => manager.resume(agentId))
   ipcMain.handle('agents:recallSteer', (_e, agentId: string) => manager.recallSteer(agentId))
   ipcMain.handle('agents:abort', (_e, agentId: string) => manager.abort(agentId))
   ipcMain.handle('agents:remove', (_e, agentId: string) => manager.remove(agentId))

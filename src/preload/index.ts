@@ -65,6 +65,7 @@ const api: DesktopApi = {
     start: (input: StartAgentInput) => ipcRenderer.invoke('agents:start', input),
     prompt: (agentId: string, text: string, images?: string[]) =>
       ipcRenderer.invoke('agents:prompt', agentId, text, images),
+    resume: (agentId: string) => ipcRenderer.invoke('agents:resume', agentId),
     recallSteer: (agentId: string) => ipcRenderer.invoke('agents:recallSteer', agentId),
     abort: (agentId: string) => ipcRenderer.invoke('agents:abort', agentId),
     remove: (agentId: string) => ipcRenderer.invoke('agents:remove', agentId),

@@ -442,6 +442,8 @@ export interface DesktopApi {
     list(projectId: number): Promise<AgentMeta[]>
     start(input: StartAgentInput): Promise<AgentMeta>
     prompt(agentId: string, text: string, images?: string[]): Promise<void>
+    /** Bring an ended conversation back to life (rehydrate session + sandbox). */
+    resume(agentId: string): Promise<void>
     /** Remove and return the last queued steer (for Esc-to-recall editing). */
     recallSteer(agentId: string): Promise<string | null>
     abort(agentId: string): Promise<void>
