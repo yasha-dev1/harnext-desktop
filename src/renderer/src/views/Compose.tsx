@@ -5,6 +5,7 @@ import type { BranchList, PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
 
@@ -165,6 +166,14 @@ export default function Compose(): JSX.Element {
                 onChange={(v) => void saveSettings({ model: v })}
               />
             )}
+            <span className="ctl" title="Reasoning effort — how hard the model thinks">
+              <Icon.brain size={14} />
+              <span className="k">effort</span>
+            </span>
+            <EffortPicker
+              value={settings.thinkingLevel}
+              onChange={(v) => void saveSettings({ thinkingLevel: v })}
+            />
             {project.isGit && branchOptions.length > 0 && (
               <>
                 <span

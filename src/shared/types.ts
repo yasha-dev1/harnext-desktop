@@ -223,6 +223,13 @@ export interface LoopRun {
 }
 
 // ── settings ─────────────────────────────────────────────────────────
+/**
+ * Reasoning effort passed to the model. Mirrors `@harnext/core`'s `ThinkingLevel`
+ * (`createAgentSession({ thinkingLevel })`); core/pi-ai clamp it down to whatever
+ * the chosen model actually supports, so any value is safe for any model.
+ */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface AppSettings {
   onboarded: boolean
   theme: 'dark' | 'light'
@@ -232,6 +239,8 @@ export interface AppSettings {
   model: string
   smart: string
   executor: string
+  /** How hard the model reasons before answering. */
+  thinkingLevel: ThinkingLevel
   mode: PermissionMode
   editor: string
   openOnDone: boolean
@@ -303,6 +312,7 @@ export interface StartAgentInput {
   model?: string
   smart?: string
   executor?: string
+  thinkingLevel?: ThinkingLevel
   permissionMode?: PermissionMode
   provider?: string
   /** Git ref the agent's worktree branches off. Unset = the project's HEAD. */
