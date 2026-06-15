@@ -95,11 +95,13 @@ npm version <patch|minor|major>   # bumps package.json and creates the matching 
 git push --follow-tags            # pushes the commit and the vX.Y.Z tag → triggers the build
 ```
 
-The workflow checks out `QualityUnit/harnext` as a sibling and builds
-`@harnext/core` so the `file:../harnext/packages/core` dependency resolves (the
-lint/test CI stub isn't sufficient for a real build). If that repo is private,
-add a `HARNEXT_TOKEN` repository secret with read access; public repos use the
-default token.
+The workflow checks out `QualityUnit/harnext` as a sibling, builds `@harnext/core`,
+then **packs it into a tarball and installs that** (the Packaging step above) so
+core's transitive deps land in `node_modules` and get bundled — the `file:` symlink
+alone leaves them in the sibling workspace, outside the app, and the installer would
+crash on launch. (The lint/test CI stub isn't sufficient for a real build either.)
+If that repo is private, add a `HARNEXT_TOKEN` repository secret with read access;
+public repos use the default token.
 
 Notes / current limitations:
 

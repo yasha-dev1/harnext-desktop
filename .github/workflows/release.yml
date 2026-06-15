@@ -56,9 +56,18 @@ jobs:
       # `npm install` runs the postinstall (`electron-builder install-app-deps`),
       # which rebuilds the native better-sqlite3 against this runner's Electron —
       # required per platform/arch.
-      - name: Install desktop dependencies
+      #
+      # The `file:../harnext/packages/core` dep only symlinks @harnext/core; its
+      # transitive deps stay in the sibling workspace, outside this tree, so
+      # electron-builder can't bundle them and the packaged app crashes on launch
+      # (#74, and the README "Packaging" note). Pack @harnext/core and install the
+      # tarball so it's a real package whose deps land in node_modules.
+      - name: Install desktop dependencies (@harnext/core as a packed tarball)
         working-directory: harnext-desktop
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          TARBALL=$(cd ../harnext/packages/core && npm pack --silent | tail -1)
+          npm install "../harnext/packages/core/$TARBALL" --no-audit --no-fund
 
       - name: Build & publish installers
         working-directory: harnext-desktop
