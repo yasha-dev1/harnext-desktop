@@ -15,6 +15,21 @@ export function projectMark(p: Pick<Project, 'name'>): string {
   return mark.toUpperCase()
 }
 
+/**
+ * Avatar initials from a free-form display name — first letters of the first two
+ * words, or the first two characters of a single word. Lowercase, to match the
+ * sidebar avatar style. e.g. "Yasha Boroumand" → "yb", "yasha" → "ya".
+ */
+export function userInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+  if (parts.length === 0) return '?'
+  const mark = parts.length >= 2 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2)
+  return mark.toLowerCase()
+}
+
 export const STATUS: Record<AgentStatus, { label: string; cls: string; spin?: boolean }> = {
   running: { label: 'Working', cls: 'st-running', spin: true },
   review: { label: 'Review', cls: 'st-review' },

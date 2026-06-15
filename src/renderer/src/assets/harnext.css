@@ -734,6 +734,13 @@ html[data-density='compact'] .body {
   gap: 9px;
   margin-top: 6px;
   padding: 8px 11px;
+  width: 100%;
+  text-align: left;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+.aside-user:hover {
+  background: var(--bg-2);
 }
 .aside-av {
   width: 28px;

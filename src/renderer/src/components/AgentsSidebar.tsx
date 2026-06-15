@@ -2,7 +2,7 @@ import { useMatch, useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
 import type { AgentMeta, Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
-import { DOT_COLOR, STATUS, projectColor, projectMark } from '../lib/ui'
+import { DOT_COLOR, STATUS, projectColor, projectMark, userInitials } from '../lib/ui'
 import { Icon } from './icons'
 
 function AgentCard({
@@ -88,6 +88,7 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
   const agents = useAppStore((s) => s.agents)
   const loops = useAppStore((s) => s.loopsByProject[project.id]) ?? []
   const discardAgent = useAppStore((s) => s.discardAgent)
+  const displayName = useAppStore((s) => s.settings?.displayName)?.trim() || 'You'
 
   const handleDiscard = (a: AgentMeta): void => {
     if (!confirm('Discard this agent? Its worktree and branch are deleted.')) return
@@ -192,13 +193,17 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
           <Icon.settings size={17} />
           <span>Settings</span>
         </button>
-        <div className="aside-user">
-          <span className="aside-av">ya</span>
+        <button
+          className="aside-user"
+          title="Edit your name in Settings"
+          onClick={() => navigate(`/project/${project.id}/settings`)}
+        >
+          <span className="aside-av">{userInitials(displayName)}</span>
           <div className="aside-user-meta">
-            <div className="aside-user-nm">yasha@local</div>
+            <div className="aside-user-nm">{displayName}</div>
             <div className="aside-user-sub">Self-hosted</div>
           </div>
-        </div>
+        </button>
       </div>
     </aside>
   )

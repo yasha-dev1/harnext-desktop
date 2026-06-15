@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   projectColor,
   projectMark,
+  userInitials,
   shortModel,
   providerOf,
   timeAgo,
@@ -27,6 +28,22 @@ describe('projectMark', () => {
   })
   it('uses the first two letters for a single-word name', () => {
     expect(projectMark({ name: 'harnext' })).toBe('HA')
+  })
+})
+
+describe('userInitials', () => {
+  it('uses the first letters of the first two words', () => {
+    expect(userInitials('Yasha Boroumand')).toBe('yb')
+    expect(userInitials('ada.lovelace')).toBe('al')
+    expect(userInitials('grace-hopper')).toBe('gh')
+  })
+  it('uses the first two characters for a single token', () => {
+    expect(userInitials('yasha')).toBe('ya')
+    expect(userInitials('yasha@local')).toBe('ya')
+  })
+  it('falls back for an empty/blank name', () => {
+    expect(userInitials('   ')).toBe('?')
+    expect(userInitials('')).toBe('?')
   })
 })
 
