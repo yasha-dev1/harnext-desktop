@@ -320,11 +320,8 @@ a {
 }
 
 /* project popover (in titlebar) */
+/* Positioned by the portaled Popover (position: fixed, inline coords) — #101. */
 .tb-pop {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 40;
   width: 300px;
   background: var(--bg-2);
   border: 1px solid var(--line-2);
@@ -4325,21 +4322,14 @@ body.col-resizing {
 .mp.mono .mp-search input {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
+/* Positioned by the portaled Popover (position: fixed, inline coords) — #101. */
 .mp-pop {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 5px);
-  left: 0;
   width: 264px;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-}
-.mp-pop.up {
-  top: auto;
-  bottom: calc(100% + 5px);
 }
 .mp-search {
   display: flex;

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Icon } from './icons'
+import { Popover } from './Popover'
 
 /**
  * Searchable model dropdown — a custom combobox that replaces the native
@@ -27,7 +28,6 @@ export function ModelPicker({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [hi, setHi] = useState(0)
-  const [dropUp, setDropUp] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const baseId = useId()
@@ -44,23 +44,11 @@ export function ModelPicker({
   const hiSafe = filtered.length ? Math.min(Math.max(0, hi), filtered.length - 1) : 0
 
   const openMenu = (): void => {
-    const r = rootRef.current?.getBoundingClientRect()
-    setDropUp(r ? window.innerHeight - r.bottom < 300 : false)
     setQuery('')
     const idx = all.indexOf(value)
     setHi(idx >= 0 ? idx : 0)
     setOpen(true)
   }
-
-  // Close on outside click.
-  useEffect(() => {
-    if (!open) return
-    const onDoc = (e: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
 
   // Keep the highlighted row scrolled into view (DOM side-effect only).
   useEffect(() => {
@@ -105,8 +93,8 @@ export function ModelPicker({
         <span className="mp-val">{value || placeholder}</span>
         <Icon.chevron size={12} />
       </button>
-      {open && (
-        <div className={'mp-pop' + (dropUp ? ' up' : '')} role="listbox">
+      <Popover open={open} anchorRef={rootRef} onClose={() => setOpen(false)} className="mp-pop">
+        <div role="listbox">
           <div className="mp-search">
             <Icon.search size={13} />
             <input
@@ -144,7 +132,7 @@ export function ModelPicker({
             ))}
           </div>
         </div>
-      )}
+      </Popover>
     </div>
   )
 }
