@@ -67,6 +67,11 @@ export function shortModel(model: string | null): string {
   return (model ?? '').split('/').pop() ?? ''
 }
 
+/** Provider id from a `provider/model` id, e.g. `anthropic/claude-…` → `anthropic`. */
+export function providerOf(model: string | null): string {
+  return (model ?? '').split('/')[0] ?? ''
+}
+
 /**
  * Keyboard handler that fires `fn` on Enter/Space, for click-only `<div>`s that
  * carry `role="button"` + `tabIndex={0}` so they're operable without a mouse.
