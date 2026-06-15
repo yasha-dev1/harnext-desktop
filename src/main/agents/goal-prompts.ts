@@ -35,3 +35,17 @@ VERDICT: REVISE — changes are needed
 With REVISE, precede the verdict with a numbered list of specific, actionable fixes.`
 
 export const MAX_GOAL_ITERATIONS = 3
+
+/**
+ * Goal mode passes a full system-prompt override, which replaces core's
+ * cwd-aware default prompt — so without this the planner/executor/evaluator
+ * don't know where they are and waste turns guessing paths or running
+ * disk-wide `find` to locate their own project (#108). Append the working
+ * directory (and a "you're already here" nudge) to every goal-stage prompt.
+ */
+export function withWorkingDir(prompt: string, cwd: string): string {
+  return `${prompt}
+
+Current working directory: ${cwd}
+You are already inside this project at the path above — operate on it directly. Do not guess paths or search the filesystem (no disk-wide \`find\`) to locate it.`
+}
