@@ -26,6 +26,8 @@ export default function FilePicker({
   const [filter, setFilter] = useState('')
   const [active, setActive] = useState(0)
   const [pathEdit, setPathEdit] = useState('')
+  // The selection target last mirrored into the path bar (adjust-on-render).
+  const [syncedTarget, setSyncedTarget] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   // Seed at the home directory when no explicit start path was given.
@@ -34,7 +36,10 @@ export default function FilePicker({
     void window.api.fs.home().then((h) => setCwd(h))
   }, [cwd])
 
-  // Load the directory whenever the cwd changes.
+  // Load the directory whenever the cwd changes. No row is pre-selected, so the
+  // selection target defaults to the directory itself — the path bar then mirrors
+  // the resolved current directory until the user highlights a child (the path-bar
+  // sync below keeps it in step with the selection).
   useEffect(() => {
     if (!cwd) return
     let live = true
@@ -42,8 +47,7 @@ export default function FilePicker({
       if (!live) return
       setListing(res)
       setFilter('')
-      setActive(0)
-      setPathEdit(res.path)
+      setActive(-1)
     })
     return () => {
       live = false
@@ -57,8 +61,9 @@ export default function FilePicker({
   }, [listing, filter])
 
   // Clamp the active index during render (filtering can shrink the list) rather
-  // than via a setState-in-effect.
-  const activeIdx = filtered.length === 0 ? -1 : Math.min(Math.max(0, active), filtered.length - 1)
+  // than via a setState-in-effect. `active < 0` means nothing is highlighted yet,
+  // so the selection target falls back to the current directory.
+  const activeIdx = filtered.length === 0 || active < 0 ? -1 : Math.min(active, filtered.length - 1)
   useEffect(() => {
     listRef.current?.querySelector('.dir.sel')?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
@@ -69,9 +74,21 @@ export default function FilePicker({
   }
   const goHome = (): void => void window.api.fs.home().then(enter)
 
-  const current: FsEntry | undefined = filtered[activeIdx]
-  const targetPath = mode === 'dir' ? (current?.isDir ? current.path : (cwd ?? '')) : current?.path
+  const current: FsEntry | undefined = activeIdx < 0 ? undefined : filtered[activeIdx]
+  // The resolved directory currently being browsed (canonical, from the listing).
+  const dirHere = listing?.path ?? cwd ?? ''
+  const targetPath = mode === 'dir' ? (current?.isDir ? current.path : dirHere) : current?.path
   const canSelect = mode === 'dir' ? Boolean(cwd) : Boolean(current && !current.isDir)
+
+  // Keep the path bar in step with what Select will actually pick: the highlighted
+  // folder in dir mode (so a single click is reflected), otherwise the directory
+  // being browsed. Mirrored on change (adjust-on-render) so the bar stays editable —
+  // typing updates the buffer without moving the selection, and Enter navigates.
+  const barTarget = mode === 'dir' ? (targetPath ?? '') : dirHere
+  if (barTarget !== syncedTarget) {
+    setSyncedTarget(barTarget)
+    setPathEdit(barTarget)
+  }
 
   const activateRow = (e: FsEntry): void => {
     if (e.isDir) enter(e.path)
