@@ -18,6 +18,7 @@ import type {
   Role,
   SandboxInfo,
   StartAgentInput,
+  ThinkingLevel,
   WorktreeDiff
 } from '../../shared/types'
 import * as db from '../db'
@@ -218,6 +219,8 @@ interface LiveAgent {
   smartModel: string | null
   execModel: string | null
   provider: string
+  /** Reasoning effort for every session this agent spins up. */
+  thinkingLevel: ThinkingLevel
   /** Docker sandbox routing: when set, shell commands run in the container. */
   executor: CommandExecutor | null
   /** Container-side working dir for the executor (the bind-mount target). */
@@ -267,6 +270,7 @@ export class AgentManager {
     const model = input.model ?? settings.model
     const smart = input.smart ?? settings.smart
     const executor = input.executor ?? settings.executor
+    const thinkingLevel = input.thinkingLevel ?? settings.thinkingLevel
 
     ensureProviderEnv(provider)
 
@@ -310,6 +314,7 @@ export class AgentManager {
       smartModel: isGoal ? smart : null,
       execModel: isGoal ? executor : model,
       provider,
+      thinkingLevel,
       executor: null,
       execCwd: undefined,
       sandbox: null,
@@ -680,6 +685,7 @@ export class AgentManager {
       cwd: agent.cwd,
       provider: agent.provider,
       modelId: opts.modelId,
+      thinkingLevel: agent.thinkingLevel,
       permissionMode: opts.permissionMode,
       systemPrompt: opts.systemPrompt,
       mcpDisabled: opts.mcpDisabled,
