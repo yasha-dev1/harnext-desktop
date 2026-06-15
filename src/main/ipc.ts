@@ -8,9 +8,12 @@ import type {
   EnvOverrides,
   FsListing,
   LoopInput,
+  McpScope,
+  McpServerConfig,
   ProjectEnvConfig,
   StartAgentInput
 } from '../shared/types'
+import { addServer, listServers, removeServer, setServerEnabled } from './mcp'
 import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
@@ -88,6 +91,22 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       }
     }
   })
+
+  // MCP server connector
+  ipcMain.handle('mcp:list', (_e, cwd: string | null) => listServers(cwd))
+  ipcMain.handle(
+    'mcp:add',
+    (_e, scope: McpScope, name: string, server: McpServerConfig, cwd: string | null) =>
+      addServer(scope, name, server, cwd)
+  )
+  ipcMain.handle('mcp:remove', (_e, scope: McpScope, name: string, cwd: string | null) =>
+    removeServer(scope, name, cwd)
+  )
+  ipcMain.handle(
+    'mcp:setEnabled',
+    (_e, scope: McpScope, name: string, enabled: boolean, cwd: string | null) =>
+      setServerEnabled(scope, name, enabled, cwd)
+  )
 
   ipcMain.handle('sounds:read', (_e, p: string) => {
     try {

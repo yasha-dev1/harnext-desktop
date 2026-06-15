@@ -20,6 +20,13 @@ const api: DesktopApi = {
     home: () => ipcRenderer.invoke('fs:home'),
     listDir: (path: string) => ipcRenderer.invoke('fs:listDir', path)
   },
+  mcp: {
+    list: (cwd) => ipcRenderer.invoke('mcp:list', cwd),
+    add: (scope, name, server, cwd) => ipcRenderer.invoke('mcp:add', scope, name, server, cwd),
+    remove: (scope, name, cwd) => ipcRenderer.invoke('mcp:remove', scope, name, cwd),
+    setEnabled: (scope, name, enabled, cwd) =>
+      ipcRenderer.invoke('mcp:setEnabled', scope, name, enabled, cwd)
+  },
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   pickAudioFile: () => ipcRenderer.invoke('dialog:pickAudioFile'),
   readSound: (path: string) => ipcRenderer.invoke('sounds:read', path),

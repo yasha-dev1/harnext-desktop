@@ -322,6 +322,27 @@ export interface FsListing {
   error?: string
 }
 
+// ── MCP server connector (backed by @harnext/core's mcp-config) ───────
+export type McpScope = 'user' | 'project'
+export type McpLifecycle = 'lazy' | 'eager' | 'keep-alive'
+export type McpTransport = 'stdio' | 'url'
+/** Subset of core's McpServerConfig the connector UI manages. */
+export interface McpServerConfig {
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  lifecycle?: McpLifecycle
+}
+export interface McpServerRow {
+  name: string
+  scope: McpScope
+  transport: McpTransport
+  enabled: boolean
+  config: McpServerConfig
+}
+
 // ── renderer API ─────────────────────────────────────────────────────
 export interface DesktopApi {
   win: {
@@ -334,6 +355,13 @@ export interface DesktopApi {
   fs: {
     home(): Promise<string>
     listDir(path: string): Promise<FsListing>
+  }
+  /** MCP server connector — add / list / remove / toggle custom servers. */
+  mcp: {
+    list(cwd: string | null): Promise<McpServerRow[]>
+    add(scope: McpScope, name: string, server: McpServerConfig, cwd: string | null): Promise<void>
+    remove(scope: McpScope, name: string, cwd: string | null): Promise<void>
+    setEnabled(scope: McpScope, name: string, enabled: boolean, cwd: string | null): Promise<void>
   }
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>
