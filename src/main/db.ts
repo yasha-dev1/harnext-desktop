@@ -217,6 +217,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
   model: 'claude-sonnet-4-6',
   smart: 'claude-opus-4-8',
   executor: 'claude-sonnet-4-6',
+  thinkingLevel: 'medium',
   mode: 'acceptEdits',
   editor: 'VS Code',
   openOnDone: false,

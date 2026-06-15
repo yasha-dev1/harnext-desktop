@@ -14,6 +14,7 @@ import type {
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { EffortPicker } from '../components/EffortPicker'
 import { EditorLogo } from '../components/EditorLogo'
 import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
@@ -114,6 +115,15 @@ function ModelsTab({
             value={settings.model}
             onChange={(v) => save({ model: v })}
             models={models}
+          />
+        </Row>
+        <Row
+          label="Reasoning effort"
+          desc="How hard the model thinks before answering. Higher is more thorough but slower and pricier; unsupported models clamp to what they allow."
+        >
+          <EffortPicker
+            value={settings.thinkingLevel}
+            onChange={(v) => save({ thinkingLevel: v })}
           />
         </Row>
         <Row label="Edit handling" desc="What the agent may do without asking.">
