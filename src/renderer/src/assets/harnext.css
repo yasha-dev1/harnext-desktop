@@ -2245,6 +2245,145 @@ body.col-resizing {
   font-size: 11px;
   color: var(--tx-3);
 }
+
+/* MCP connector (issue #60) */
+.mcp-scope {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.mcp-scope button {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  color: var(--tx-2);
+  background: transparent;
+  cursor: pointer;
+}
+.mcp-scope button.on {
+  background: var(--bg-0);
+  color: var(--tx-0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.mcp-scope button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mcp-desc {
+  padding: 14px 18px 4px;
+  font-size: 12.5px;
+  color: var(--tx-2);
+  line-height: 1.5;
+}
+.mcp-empty {
+  margin: 4px 18px 0;
+  padding: 22px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--tx-3);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+.mcp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 14px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--bg-1);
+}
+.mcp-row.off {
+  opacity: 0.6;
+}
+.mcp-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.mcp-row-top b {
+  color: var(--tx-0);
+  font-weight: 600;
+}
+.mcp-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: var(--p-text);
+  background: var(--p-soft);
+  border: 1px solid var(--p-line);
+}
+.mcp-badge.off {
+  color: var(--tx-3);
+  background: var(--bg-2);
+  border-color: var(--line);
+}
+.mcp-row-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--tx-3);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcp-del {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-1);
+  color: var(--tx-3);
+  cursor: pointer;
+  transition: 0.12s;
+}
+.mcp-del:hover {
+  color: var(--err);
+  border-color: color-mix(in oklab, var(--err), transparent 60%);
+}
+.mcp-form {
+  margin: 12px 14px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-0);
+}
+.mcp-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mcp-err {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--err);
+}
+.mcp-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 14px;
+}
 .set-card.danger .set-card-head svg,
 .set-card.danger .set-card-head h3 {
   color: var(--err);

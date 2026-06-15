@@ -17,6 +17,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EditorLogo } from '../components/EditorLogo'
 import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
+import McpSettings from '../components/McpSettings'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
 
@@ -1126,6 +1127,7 @@ export default function Settings(): JSX.Element {
     { id: 'models', label: 'Models', ic: 'loop' },
     { id: 'providers', label: 'Providers', ic: 'cube' },
     { id: 'environment', label: 'Environment', ic: 'layers' },
+    { id: 'mcp', label: 'MCP', ic: 'terminal' },
     { id: 'general', label: 'General', ic: 'branch' },
     { id: 'appearance', label: 'Appearance', ic: 'spark' }
   ]
@@ -1177,6 +1179,7 @@ export default function Settings(): JSX.Element {
           setOverrides={(patch) => setProjectEnvOverrides(project.id, patch)}
         />
       )}
+      {tab === 'mcp' && <McpSettings cwd={project.path} />}
       {tab === 'general' && <GeneralTab settings={settings} save={save} />}
       {tab === 'appearance' && <AppearanceTab settings={settings} save={save} />}
     </div>
