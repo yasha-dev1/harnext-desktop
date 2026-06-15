@@ -19,6 +19,10 @@ export interface Project {
   createdAt: number
   /** Docker sandbox config, detected on add. null = never analyzed (pre-feature projects). */
   envConfig: ProjectEnvConfig | null
+  /** Branch switcher (#96): worktree the project's context is pointed at. Null = main checkout. */
+  activeWorktreePath: string | null
+  /** The branch checked out in {@link activeWorktreePath}; null = on the main checkout. */
+  activeBranch: string | null
 }
 
 // ── project environment / docker sandbox ─────────────────────────────
@@ -423,6 +427,8 @@ export interface DesktopApi {
     touch(id: number): Promise<void>
     /** Fetch from the remote (best-effort) and list local + remote branches. */
     branches(id: number): Promise<BranchList>
+    /** Point the project context at `branch` (checked out into a worktree). */
+    checkoutBranch(id: number, branch: string): Promise<Project>
     /** Probe the host for Docker + Compose availability. */
     dockerStatus(): Promise<DockerStatus>
     /** Re-run compose detection for a project, preserving the user's enable choice. */

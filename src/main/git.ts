@@ -187,6 +187,54 @@ export function createWorktree(
   return { path, branch }
 }
 
+/** The worktree path a local branch is checked out in, or null. */
+export function worktreeForBranch(repoPath: string, branch: string): string | null {
+  const out = runGit(['worktree', 'list', '--porcelain'], repoPath).stdout
+  let path: string | null = null
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) path = line.slice('worktree '.length).trim()
+    else if (line.startsWith('branch ')) {
+      const ref = line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '')
+      if (ref === branch && path) return path
+    }
+  }
+  return null
+}
+
+/**
+ * Check `branch` out into a worktree under `root` and return it — the project's
+ * "active branch" worktree for #96. A branch can live in only one worktree, so:
+ *   - already checked out (incl. the main repo) → reuse that worktree path;
+ *   - a remote-only ref (`origin/foo`) → create a local tracking branch;
+ *   - an existing local branch → add a worktree on it.
+ * The main checkout is never modified.
+ */
+export function openBranchWorktree(
+  repoPath: string,
+  branch: string,
+  root: string = DEFAULT_WORKTREE_ROOT
+): WorktreeInfo {
+  runGit(['worktree', 'prune'], repoPath)
+  const isRemote = branch.includes('/') && !branchExists(repoPath, branch)
+  const local = isRemote ? branch.replace(/^[^/]+\//, '') : branch
+  const existing = worktreeForBranch(repoPath, local)
+  if (existing) return { path: existing, branch: local }
+  mkdirSync(root, { recursive: true })
+  let path = join(root, `branch-${slugify(local)}`)
+  for (let n = 2; existsSync(path); n++) path = join(root, `branch-${slugify(local)}-${n}`)
+  const args = isRemote
+    ? ['worktree', 'add', '--track', '-b', local, path, branch]
+    : ['worktree', 'add', path, local]
+  const r = runGit(args, repoPath)
+  if (r.exit !== 0) {
+    throw new Error(`git worktree add failed: ${r.stderr.trim() || 'exit ' + r.exit}`)
+  }
+  return { path, branch: local }
+}
+
 export function removeWorktree(
   projectPath: string,
   worktreePath: string,

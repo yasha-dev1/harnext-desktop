@@ -18,7 +18,7 @@ import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
 import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
-import { currentBranch, fetchRemote, isGitRepo, listBranches } from './git'
+import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
 
@@ -180,6 +180,17 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     if (!project?.isGit) return { current: null, local: [], remote: [] }
     fetchRemote(project.path) // best-effort; pulls in new remote branches
     return listBranches(project.path)
+  })
+  // Branch switcher (#96): point the project's context at the chosen branch. The
+  // branch the main checkout is on clears the pin; any other branch is checked
+  // out into a (reused or new) worktree. The main checkout is never touched.
+  ipcMain.handle('projects:checkoutBranch', (_e, id: number, branch: string) => {
+    const project = db.getProject(id)
+    if (!project?.isGit) return project
+    fetchRemote(project.path)
+    if (branch === currentBranch(project.path)) return db.setActiveWorktree(id, null, null)
+    const wt = openBranchWorktree(project.path, branch, db.getSettings().worktreeRoot)
+    return db.setActiveWorktree(id, wt.path, wt.branch)
   })
   ipcMain.handle('docker:status', () => getDockerStatus())
   ipcMain.handle('projects:detectEnv', async (_e, id: number) => {

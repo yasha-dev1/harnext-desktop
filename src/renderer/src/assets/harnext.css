@@ -245,6 +245,30 @@ a {
   color: var(--tx-1);
   font-weight: 500;
 }
+/* Branch switcher (#96) */
+.tb-branch-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.tb-branch.pinned b {
+  color: var(--p-text);
+}
+.tb-pop-branch {
+  width: 280px;
+}
+.tb-branch-ic {
+  display: inline-flex;
+  color: var(--tx-2);
+  flex: none;
+}
+.tb-pop-msg {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--tx-2);
+}
+.tick.spin {
+  animation: pr-rot 0.8s linear infinite;
+}
 .tb-spacer {
   flex: 1;
   height: 100%;
