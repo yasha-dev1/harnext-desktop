@@ -491,6 +491,13 @@ export function updateAgentDiffStat(id: string, add: number, del: number): void 
   db.prepare('UPDATE agents SET additions = ?, deletions = ? WHERE id = ?').run(add, del, id)
 }
 
+/** Rename a conversation (#115). Trims; ignores an empty title. */
+export function renameAgent(id: string, title: string): void {
+  const t = title.trim()
+  if (!t) return
+  db.prepare('UPDATE agents SET title = ?, updated_at = ? WHERE id = ?').run(t, Date.now(), id)
+}
+
 export function removeAgent(id: string): void {
   db.prepare('DELETE FROM agents WHERE id = ?').run(id)
 }
