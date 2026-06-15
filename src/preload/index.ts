@@ -60,7 +60,8 @@ const api: DesktopApi = {
   agents: {
     list: (projectId: number) => ipcRenderer.invoke('agents:list', projectId),
     start: (input: StartAgentInput) => ipcRenderer.invoke('agents:start', input),
-    prompt: (agentId: string, text: string) => ipcRenderer.invoke('agents:prompt', agentId, text),
+    prompt: (agentId: string, text: string, images?: string[]) =>
+      ipcRenderer.invoke('agents:prompt', agentId, text, images),
     abort: (agentId: string) => ipcRenderer.invoke('agents:abort', agentId),
     remove: (agentId: string) => ipcRenderer.invoke('agents:remove', agentId),
     timeline: (agentId: string) => ipcRenderer.invoke('agents:timeline', agentId),

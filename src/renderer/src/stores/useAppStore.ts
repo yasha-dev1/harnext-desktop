@@ -63,7 +63,7 @@ interface AppStore {
 
   loadAgents: (projectId: number) => Promise<void>
   startAgent: (input: StartAgentInput) => Promise<AgentMeta>
-  sendPrompt: (agentId: string, text: string) => Promise<void>
+  sendPrompt: (agentId: string, text: string, images?: string[]) => Promise<void>
   abortAgent: (agentId: string) => Promise<void>
   discardAgent: (agentId: string) => Promise<void>
   mergeAgent: (agentId: string) => Promise<void>
@@ -277,8 +277,8 @@ export const useAppStore = create<AppStore>((set, get) => {
       return meta
     },
 
-    sendPrompt: async (agentId, text) => {
-      await window.api.agents.prompt(agentId, text)
+    sendPrompt: async (agentId, text, images) => {
+      await window.api.agents.prompt(agentId, text, images)
     },
 
     abortAgent: async (agentId) => {

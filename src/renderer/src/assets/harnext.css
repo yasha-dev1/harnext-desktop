@@ -859,6 +859,87 @@ html[data-density='compact'] .body {
 .composer-bar .grow {
   flex: 1;
 }
+
+/* image attachments (issue #64) */
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-1);
+  color: var(--tx-2);
+  cursor: pointer;
+  transition: 0.12s;
+}
+.attach-btn:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--tx-0);
+  border-color: var(--line-2);
+}
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+.attach-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.attach-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.attach-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  cursor: pointer;
+}
+.attach-x:hover {
+  background: var(--err);
+}
+.reply-wrap {
+  margin-top: 12px;
+}
+.msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.msg-images img {
+  max-width: 220px;
+  max-height: 180px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: contain;
+  background: var(--bg-2);
+}
 .composer-start {
   display: inline-flex;
   align-items: center;

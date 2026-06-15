@@ -5,6 +5,8 @@ import type { PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { AttachButton, AttachmentBar } from '../components/Attachments'
+import { useAttachments } from '../lib/attachments'
 
 const QUICK: { ic: IconName; t: string }[] = [
   { ic: 'bolt', t: 'Fix the failing tests' },
@@ -28,6 +30,7 @@ export default function Compose(): JSX.Element {
 
   const [text, setText] = useState('')
   const [starting, setStarting] = useState(false)
+  const att = useAttachments()
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<ProviderOption[]>([])
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -49,12 +52,15 @@ export default function Compose(): JSX.Element {
   const isGoal = /(^|\s)\/goal\b/i.test(text)
 
   const start = async (): Promise<void> => {
-    if (!text.trim() || starting) return
+    // Allow an image-only prompt (text or at least one attachment).
+    if ((!text.trim() && att.items.length === 0) || starting) return
     setStarting(true)
     setError(null)
     try {
-      const meta = await startAgent({ projectId, prompt: text.trim() })
+      const images = att.items.map((a) => a.dataUrl)
+      const meta = await startAgent({ projectId, prompt: text.trim(), images })
       setText('')
+      att.clear()
       navigate(`/project/${projectId}/agent/${meta.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -78,12 +84,14 @@ export default function Compose(): JSX.Element {
           evaluator loop, where a smart model plans &amp; reviews while an executor writes the code.
         </p>
 
-        <div className="composer">
+        <div className="composer" onDrop={att.onDrop} onDragOver={(e) => e.preventDefault()}>
+          <AttachmentBar items={att.items} onRemove={att.remove} />
           <textarea
             ref={taRef}
             value={text}
-            placeholder="e.g. Add input validation to the signup form — or /goal for a multi-step task…"
+            placeholder="e.g. Add input validation to the signup form — or /goal for a multi-step task…  (paste or drop an image)"
             onChange={(e) => setText(e.target.value)}
+            onPaste={att.onPaste}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault()
@@ -93,6 +101,7 @@ export default function Compose(): JSX.Element {
             autoFocus
           />
           <div className="composer-bar">
+            <AttachButton onPick={att.addFiles} />
             <span className="ctl-sel">
               <select
                 value={settings.mode}
@@ -146,12 +155,12 @@ export default function Compose(): JSX.Element {
           </div>
         </div>
 
-        {error && (
+        {(error || att.error) && (
           <div
             className="set-card danger"
             style={{ marginTop: 14, padding: '12px 16px', fontSize: 12, color: 'var(--err)' }}
           >
-            {error}
+            {error || att.error}
           </div>
         )}
 

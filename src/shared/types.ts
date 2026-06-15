@@ -129,6 +129,8 @@ export interface MessageItem {
   content: string
   /** evaluator verdict when role === 'eval' */
   verdict: 'approve' | 'revise' | null
+  /** Attached images (data URLs) on a user message, for the transcript. */
+  images?: string[]
   createdAt: number
 }
 
@@ -288,6 +290,8 @@ export type AgentPush =
 export interface StartAgentInput {
   projectId: number
   prompt: string
+  /** Attached images (data URLs) to send with the opening prompt. */
+  images?: string[]
   /** overrides; defaults come from settings */
   model?: string
   smart?: string
@@ -402,7 +406,7 @@ export interface DesktopApi {
   agents: {
     list(projectId: number): Promise<AgentMeta[]>
     start(input: StartAgentInput): Promise<AgentMeta>
-    prompt(agentId: string, text: string): Promise<void>
+    prompt(agentId: string, text: string, images?: string[]): Promise<void>
     abort(agentId: string): Promise<void>
     remove(agentId: string): Promise<void>
     timeline(agentId: string): Promise<TimelineItem[]>

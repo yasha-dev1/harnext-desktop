@@ -329,7 +329,8 @@ export class AgentManager {
     }
     this.live.set(agentId, agent)
 
-    const userItem = db.insertMessage(agentId, agent.seq++, 'user', cleanPrompt)
+    const images = input.images
+    const userItem = db.insertMessage(agentId, agent.seq++, 'user', cleanPrompt, null, images)
     this.send({ agentId, type: 'message', item: userItem })
 
     // Bring up the Docker sandbox (if enabled) before the agent runs, so it
@@ -337,8 +338,8 @@ export class AgentManager {
     // this stays off the IPC return path.
     const run = async (): Promise<void> => {
       await this.prepareSandbox(agent, project)
-      if (isGoal) await this.runGoal(agent, cleanPrompt)
-      else await this.runSingle(agent, cleanPrompt)
+      if (isGoal) await this.runGoal(agent, cleanPrompt, images)
+      else await this.runSingle(agent, cleanPrompt, images)
     }
     void run().catch((err: unknown) =>
       this.settle(agent, err instanceof Error ? err.message : String(err))
@@ -396,12 +397,12 @@ export class AgentManager {
     return this.sandboxInfo(agent)
   }
 
-  async prompt(agentId: string, text: string): Promise<void> {
+  async prompt(agentId: string, text: string, images?: string[]): Promise<void> {
     const agent = this.live.get(agentId)
     if (!agent?.mainSession) {
       throw new Error('This agent session has ended — start a new agent to continue.')
     }
-    const item = db.insertMessage(agentId, agent.seq++, 'user', text)
+    const item = db.insertMessage(agentId, agent.seq++, 'user', text, null, images)
     this.send({ agentId, type: 'message', item })
     this.setStatus(agent.id, 'running', 'Getting to work')
     agent.abortRequested = false
@@ -409,7 +410,7 @@ export class AgentManager {
     agent.lastErrorMessage = null
     const session = agent.mainSession
     void session
-      .prompt(text)
+      .prompt(text, images)
       .then(() => this.settle(agent))
       .catch((err: unknown) => this.settle(agent, err instanceof Error ? err.message : String(err)))
   }
@@ -565,18 +566,18 @@ export class AgentManager {
 
   // ── run flows ──────────────────────────────────────────────────────
 
-  private async runSingle(agent: LiveAgent, prompt: string): Promise<void> {
+  private async runSingle(agent: LiveAgent, prompt: string, images?: string[]): Promise<void> {
     const session = await this.createSession(agent, {
       modelId: agent.execModel!,
       role: 'exec',
       permissionMode: agent.permissionMode
     })
     agent.mainSession = session
-    await session.prompt(prompt)
+    await session.prompt(prompt, images)
     this.settle(agent)
   }
 
-  private async runGoal(agent: LiveAgent, goal: string): Promise<void> {
+  private async runGoal(agent: LiveAgent, goal: string, images?: string[]): Promise<void> {
     const settings = db.getSettings()
 
     // 1 — planner (smart model, read-only)
@@ -588,7 +589,7 @@ export class AgentManager {
       systemPrompt: PLANNER_SYSTEM_PROMPT,
       mcpDisabled: true
     })
-    await planner.prompt(goal)
+    await planner.prompt(goal, images)
     const blueprint = agent.lastAssistantText
     if (agent.abortRequested || !blueprint) {
       this.settle(agent)
