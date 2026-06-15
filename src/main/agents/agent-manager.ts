@@ -43,7 +43,8 @@ import {
   EVALUATOR_SYSTEM_PROMPT,
   GENERATOR_SYSTEM_PROMPT,
   MAX_GOAL_ITERATIONS,
-  PLANNER_SYSTEM_PROMPT
+  PLANNER_SYSTEM_PROMPT,
+  withWorkingDir
 } from './goal-prompts'
 
 type AgentEvent = Parameters<AgentSessionEventListener>[0]
@@ -769,7 +770,7 @@ export class AgentManager {
       modelId: agent.smartModel!,
       role: 'plan',
       permissionMode: 'plan',
-      systemPrompt: PLANNER_SYSTEM_PROMPT,
+      systemPrompt: withWorkingDir(PLANNER_SYSTEM_PROMPT, agent.cwd),
       mcpDisabled: true
     })
     await planner.prompt(goal, images)
@@ -785,7 +786,7 @@ export class AgentManager {
       modelId: agent.execModel!,
       role: 'exec',
       permissionMode: agent.permissionMode,
-      systemPrompt: GENERATOR_SYSTEM_PROMPT
+      systemPrompt: withWorkingDir(GENERATOR_SYSTEM_PROMPT, agent.cwd)
     })
     agent.mainSession = generator
     await generator.prompt(
@@ -804,7 +805,7 @@ export class AgentManager {
           modelId: agent.smartModel!,
           role: 'eval',
           permissionMode: 'plan',
-          systemPrompt: EVALUATOR_SYSTEM_PROMPT,
+          systemPrompt: withWorkingDir(EVALUATOR_SYSTEM_PROMPT, agent.cwd),
           mcpDisabled: true
         })
         await evaluator.prompt(
