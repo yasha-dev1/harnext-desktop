@@ -72,3 +72,38 @@ cd -
 npm i @harnext/core@../harnext/packages/core/harnext-core-<version>.tgz
 npm run build:linux                        # or build:mac / build:win
 ```
+
+## Releasing
+
+Releases are built and published automatically by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) when a version
+tag is pushed. A matrix of native runners (`macos-latest`, `windows-latest`,
+`ubuntu-latest`) each builds its own installers — required because the native
+`better-sqlite3` module is rebuilt per platform/arch — and electron-builder's
+GitHub publisher uploads them to a Release for the tag:
+
+| Runner | Script | Artifacts |
+| --- | --- | --- |
+| macOS | `build:mac` | `harnext-desktop-<version>.dmg` |
+| Windows | `build:win` | `harnext-desktop-<version>-setup.exe` (NSIS) |
+| Linux | `build:linux` | `harnext-desktop-<version>.AppImage`, `.snap`, `.deb` |
+
+To cut a release:
+
+```bash
+npm version <patch|minor|major>   # bumps package.json and creates the matching git tag
+git push --follow-tags            # pushes the commit and the vX.Y.Z tag → triggers the build
+```
+
+The workflow checks out `QualityUnit/harnext` as a sibling and builds
+`@harnext/core` so the `file:../harnext/packages/core` dependency resolves (the
+lint/test CI stub isn't sufficient for a real build). If that repo is private,
+add a `HARNEXT_TOKEN` repository secret with read access; public repos use the
+default token.
+
+Notes / current limitations:
+
+- Builds are **unsigned** — macOS has `notarize: false` and Windows isn't code-signed,
+  so users see a Gatekeeper / SmartScreen warning. Signing needs an Apple Developer
+  cert and a Windows code-signing cert as repo secrets (follow-up).
+- Keep the git tag and `package.json` `version` in sync — `npm version` does this.

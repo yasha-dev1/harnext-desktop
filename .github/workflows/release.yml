@@ -1,0 +1,68 @@
+name: Release
+
+# Build harnext-desktop for Linux, Windows and macOS and publish the installers
+# to a GitHub Release whenever a version tag is pushed (e.g. `git tag v0.2.0`).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release and upload installer assets
+
+jobs:
+  release:
+    name: Build & publish (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # one OS failing shouldn't drop the others' artifacts
+      matrix:
+        include:
+          - os: macos-latest
+            script: build:mac
+          - os: windows-latest
+            script: build:win
+          - os: ubuntu-latest
+            script: build:linux
+    steps:
+      # The desktop and @harnext/core live as siblings so the package.json's
+      # `file:../harnext/packages/core` dependency resolves: check both out under
+      # the workspace as `harnext-desktop/` and `harnext/`.
+      - name: Checkout harnext-desktop
+        uses: actions/checkout@v4
+        with:
+          path: harnext-desktop
+
+      # The real @harnext/core — the CI lint/test stub (see ci.yml / #16) is not
+      # enough for a release build, which imports the actual package.
+      - name: Checkout @harnext/core
+        uses: actions/checkout@v4
+        with:
+          repository: QualityUnit/harnext
+          path: harnext
+          # Public → github.token works; private → set a HARNEXT_TOKEN PAT secret.
+          token: ${{ secrets.HARNEXT_TOKEN || github.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build @harnext/core
+        working-directory: harnext
+        run: |
+          npm ci
+          npm -w packages/core run build
+
+      # `npm install` runs the postinstall (`electron-builder install-app-deps`),
+      # which rebuilds the native better-sqlite3 against this runner's Electron —
+      # required per platform/arch.
+      - name: Install desktop dependencies
+        working-directory: harnext-desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Build & publish installers
+        working-directory: harnext-desktop
+        env:
+          # electron-builder's GitHub publisher uses this to create/upload the release.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run ${{ matrix.script }} -- --publish always
