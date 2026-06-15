@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useMatch } from 'react-router-dom'
 import type { JSX } from 'react'
 import { useAppStore } from './stores/useAppStore'
 import Titlebar from './components/Titlebar'
+import FilePicker from './components/FilePicker'
 import Onboarding from './views/Onboarding'
 import OpenProjectPage from './views/OpenProjectPage'
 import ProjectShell from './views/ProjectShell'
@@ -12,6 +13,20 @@ import Settings from './views/Settings'
 import LoopsHome from './views/LoopsHome'
 import LoopDetail from './views/LoopDetail'
 import NewLoopForm from './views/NewLoopForm'
+
+// Renders the in-app file/folder picker whenever a `pickPath()` call is pending.
+function GlobalFilePicker(): JSX.Element | null {
+  const picker = useAppStore((s) => s.picker)
+  const resolvePicker = useAppStore((s) => s.resolvePicker)
+  if (!picker) return null
+  return (
+    <FilePicker
+      mode={picker.mode}
+      onSelect={(path) => resolvePicker(path)}
+      onCancel={() => resolvePicker(null)}
+    />
+  )
+}
 
 function Shell(): JSX.Element {
   const settings = useAppStore((s) => s.settings)
@@ -35,6 +50,7 @@ function Shell(): JSX.Element {
   return (
     <div className="win">
       <Titlebar projects={projects} current={current} settingsActive={settingsActive} />
+      <GlobalFilePicker />
       <Routes>
         <Route path="/" element={<OpenProjectPage />} />
         <Route path="/project/:projectId" element={<ProjectShell />}>

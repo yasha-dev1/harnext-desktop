@@ -16,6 +16,10 @@ const api: DesktopApi = {
     close: () => ipcRenderer.send('win:close')
   },
   pickDirectory: () => ipcRenderer.invoke('dialog:pickDirectory'),
+  fs: {
+    home: () => ipcRenderer.invoke('fs:home'),
+    listDir: (path: string) => ipcRenderer.invoke('fs:listDir', path)
+  },
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   pickAudioFile: () => ipcRenderer.invoke('dialog:pickAudioFile'),
   readSound: (path: string) => ipcRenderer.invoke('sounds:read', path),

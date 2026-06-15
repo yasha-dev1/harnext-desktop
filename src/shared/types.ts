@@ -305,6 +305,23 @@ export interface LoopInput {
   enabled: boolean
 }
 
+// ── filesystem browsing (custom in-app picker) ───────────────────────
+export interface FsEntry {
+  name: string
+  path: string
+  isDir: boolean
+  isSymlink: boolean
+}
+export interface FsListing {
+  /** The resolved directory that was listed. */
+  path: string
+  /** Parent directory, or null at the filesystem root. */
+  parent: string | null
+  entries: FsEntry[]
+  /** Set when the directory couldn't be read (permission denied, missing, …). */
+  error?: string
+}
+
 // ── renderer API ─────────────────────────────────────────────────────
 export interface DesktopApi {
   win: {
@@ -313,6 +330,11 @@ export interface DesktopApi {
     close(): void
   }
   pickDirectory(): Promise<string | null>
+  /** Read-only filesystem browsing for the custom file/folder picker. */
+  fs: {
+    home(): Promise<string>
+    listDir(path: string): Promise<FsListing>
+  }
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>
   /** Pick an audio file (returns its absolute path) for the custom "done" sound. */

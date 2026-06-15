@@ -1,10 +1,12 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { readFileSync } from 'node:fs'
-import { extname } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { extname, join, dirname, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
 import type {
   AppSettings,
   EnvOverrides,
+  FsListing,
   LoopInput,
   ProjectEnvConfig,
   StartAgentInput
@@ -50,6 +52,41 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'] }]
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  // Read-only filesystem browsing for the in-app file/folder picker.
+  ipcMain.handle('fs:home', () => homedir())
+  ipcMain.handle('fs:listDir', (_e, dirPath: string): FsListing => {
+    try {
+      const abs = resolve(dirPath)
+      const dirents = readdirSync(abs, { withFileTypes: true })
+      const entries = dirents
+        .filter((d) => !d.name.startsWith('.')) // hide dotfiles by default
+        .map((d) => {
+          const full = join(abs, d.name)
+          const isSymlink = d.isSymbolicLink()
+          let isDir = d.isDirectory()
+          // Resolve a symlink's target type so it sorts/navigates correctly.
+          if (isSymlink) {
+            try {
+              isDir = statSync(full).isDirectory()
+            } catch {
+              isDir = false
+            }
+          }
+          return { name: d.name, path: full, isDir, isSymlink }
+        })
+        .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1))
+      const parent = dirname(abs)
+      return { path: abs, parent: parent === abs ? null : parent, entries }
+    } catch (err) {
+      return {
+        path: dirPath,
+        parent: null,
+        entries: [],
+        error: err instanceof Error ? err.message : String(err)
+      }
+    }
   })
 
   ipcMain.handle('sounds:read', (_e, p: string) => {
