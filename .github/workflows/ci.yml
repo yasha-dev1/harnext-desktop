@@ -8,7 +8,20 @@ on:
 jobs:
   lint-test:
     name: Lint & unit tests
-    runs-on: ubuntu-latest
+    # Run the pure-logic suite on more than one OS so platform-specific
+    # regressions (path separators, line endings, shell assumptions) surface in
+    # CI rather than on a contributor's machine — a named gap in #138.
+    # `fail-fast: false` so one OS failing still reports the others.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    # The stub/install steps below use POSIX shell (`printf`, `mkdir -p`); bash is
+    # the default on ubuntu/macos and keeps the door open for a Windows runner.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
