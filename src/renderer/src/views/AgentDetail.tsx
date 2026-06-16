@@ -20,6 +20,7 @@ import { Icon } from '../components/icons'
 import { ProviderLogo } from '../components/ProviderLogo'
 import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
+import { agentDraftKey } from '../lib/draft-keys'
 
 // The model's provider brand logo, falling back to the generic cube when no
 // brand mark exists for that provider so the tag is never icon-less.
@@ -202,7 +203,12 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   const recallSteer = useAppStore((s) => s.recallSteer)
   const pendingSteers = useAppStore((s) => s.steers[agent.id]) ?? []
   const undelivered = useAppStore((s) => s.undeliveredSteers[agent.id]) ?? []
-  const [reply, setReply] = useState('')
+  // Follow-up draft persists across navigation (#132): keyed per conversation.
+  const replyKey = agentDraftKey(agent.id)
+  const reply = useAppStore((s) => s.composerDrafts[replyKey] ?? '')
+  const setDraft = useAppStore((s) => s.setDraft)
+  const clearDraft = useAppStore((s) => s.clearDraft)
+  const setReply = (v: string): void => setDraft(replyKey, v)
   const [sendError, setSendError] = useState<string | null>(null)
   const [resuming, setResuming] = useState(false)
   const att = useAttachments()
@@ -239,7 +245,7 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
     // Image-only is allowed for a reply; steers are text-only.
     if ((!text && (isSteer || att.items.length === 0)) || !canCompose) return
     const images = isSteer ? [] : att.items.map((a) => a.dataUrl)
-    setReply('')
+    clearDraft(replyKey)
     if (!isSteer) att.clear()
     setSendError(null)
     if (undelivered.length) {
