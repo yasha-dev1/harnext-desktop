@@ -14,6 +14,7 @@ import type {
   SandboxInfo,
   StartAgentInput,
   TimelineItem,
+  UpdateInfo,
   WorktreeDiff
 } from '@shared/types'
 import { playSound } from '../lib/sounds'
@@ -61,6 +62,10 @@ interface AppStore {
 
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
+  /** Result of the GitHub-release update check (#162/#125); null until checked. */
+  update: UpdateInfo | null
+  /** Run the (best-effort) update check once and cache it in the store. */
+  checkUpdate: () => Promise<void>
   loadProviderModels: (providerId: string) => Promise<void>
 
   loadProjects: () => Promise<void>
@@ -219,6 +224,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     loopRuns: {},
     composerDrafts: {},
     promptHistory: {},
+    update: null,
 
     setDraft: (key, text) => set((s) => ({ composerDrafts: { ...s.composerDrafts, [key]: text } })),
     clearDraft: (key) =>
@@ -237,6 +243,17 @@ export const useAppStore = create<AppStore>((set, get) => {
     loadSettings: async () => {
       const settings = await window.api.settings.get()
       set({ settings })
+    },
+
+    // Best-effort: a missing bridge (or a failed/throwing check) leaves
+    // `update` null so neither the popup nor the badge ever shows.
+    checkUpdate: async () => {
+      try {
+        const res = await window.api.checkForUpdate?.()
+        if (res) set({ update: res })
+      } catch {
+        /* ignore — update checks never block the app */
+      }
     },
 
     saveSettings: async (patch) => {

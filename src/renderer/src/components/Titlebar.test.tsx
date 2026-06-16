@@ -60,3 +60,30 @@ describe('Titlebar branch switcher — search + scroll (#136)', () => {
     expect(document.querySelector('.tb-pop-list')).toBeTruthy()
   })
 })
+
+describe('Titlebar update badge (#125)', () => {
+  const renderBar = (updateAvailable?: boolean): void => {
+    render(
+      <MemoryRouter>
+        <Titlebar
+          projects={[project]}
+          current={project}
+          settingsActive={false}
+          updateAvailable={updateAvailable}
+        />
+      </MemoryRouter>
+    )
+  }
+
+  it('shows the update dot on the Settings entry when an update is available', () => {
+    renderBar(true)
+    expect(screen.getByLabelText('Update available')).toBeInTheDocument()
+    expect(screen.getByTitle(/update available/i)).toBeInTheDocument()
+  })
+
+  it('shows no badge when up to date (and defaults to off)', () => {
+    renderBar(false)
+    expect(screen.queryByLabelText('Update available')).toBeNull()
+    expect(screen.getByTitle('Settings')).toBeInTheDocument()
+  })
+})

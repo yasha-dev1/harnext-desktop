@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes, useMatch } from 'react-router-dom'
 import type { JSX } from 'react'
-import type { UpdateInfo } from '@shared/types'
 import { useAppStore } from './stores/useAppStore'
 import { UpdateToast } from './components/UpdateToast'
 import { shouldShowUpdate } from './lib/update-popup'
+import { shouldShowBadge } from './lib/update-badge'
 import Titlebar from './components/Titlebar'
 import FilePicker from './components/FilePicker'
 import Onboarding from './views/Onboarding'
@@ -34,6 +34,7 @@ function GlobalFilePicker(): JSX.Element | null {
 function Shell(): JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const projects = useAppStore((s) => s.projects)
+  const update = useAppStore((s) => s.update)
   const match = useMatch('/project/:projectId/*')
   const projectId = match ? Number(match.params.projectId) : null
   const current = projects.find((p) => p.id === projectId) ?? null
@@ -52,7 +53,12 @@ function Shell(): JSX.Element {
 
   return (
     <div className="win">
-      <Titlebar projects={projects} current={current} settingsActive={settingsActive} />
+      <Titlebar
+        projects={projects}
+        current={current}
+        settingsActive={settingsActive}
+        updateAvailable={shouldShowBadge(update)}
+      />
       <Routes>
         <Route path="/" element={<OpenProjectPage />} />
         <Route path="/project/:projectId" element={<ProjectShell />}>
@@ -72,12 +78,12 @@ function Shell(): JSX.Element {
 
 const UPDATE_DISMISSED_KEY = 'harnext.updateDismissed'
 
-// Checks GitHub releases on startup and shows a top-right one-click update popup
-// (#162). Dismissing a version is remembered (localStorage) so it won't nag until
-// a newer one ships. Best-effort and defensive: `checkForUpdate` is optional so a
-// failed check — or a test stub without it — never breaks the app.
+// Shows a top-right one-click update popup when the store's update check found a
+// newer release (#162). Dismissing a version is remembered (localStorage) so it
+// won't nag until a newer one ships. The check itself runs once in App and is
+// shared with the Settings-entry badge (#125), so there's a single network call.
 function UpdateGate(): JSX.Element | null {
-  const [info, setInfo] = useState<UpdateInfo | null>(null)
+  const info = useAppStore((s) => s.update)
   const [dismissed, setDismissed] = useState<string | null>(() => {
     try {
       return localStorage.getItem(UPDATE_DISMISSED_KEY)
@@ -85,12 +91,6 @@ function UpdateGate(): JSX.Element | null {
       return null
     }
   })
-
-  useEffect(() => {
-    Promise.resolve(window.api.checkForUpdate?.())
-      .then((res) => res && setInfo(res))
-      .catch(() => {})
-  }, [])
 
   if (!info || !shouldShowUpdate(info, dismissed)) return null
 
@@ -115,11 +115,13 @@ function UpdateGate(): JSX.Element | null {
 export default function App(): JSX.Element {
   const loadSettings = useAppStore((s) => s.loadSettings)
   const loadProjects = useAppStore((s) => s.loadProjects)
+  const checkUpdate = useAppStore((s) => s.checkUpdate)
 
   useEffect(() => {
     void loadSettings()
     void loadProjects()
-  }, [loadSettings, loadProjects])
+    void checkUpdate()
+  }, [loadSettings, loadProjects, checkUpdate])
 
   return (
     <HashRouter>
