@@ -13,6 +13,7 @@ import Settings from './views/Settings'
 import LoopsHome from './views/LoopsHome'
 import LoopDetail from './views/LoopDetail'
 import NewLoopForm from './views/NewLoopForm'
+import { UpdateBanner } from './components/UpdateBanner'
 
 // Renders the in-app file/folder picker whenever a `pickPath()` call is pending.
 function GlobalFilePicker(): JSX.Element | null {
@@ -83,6 +84,8 @@ export default function App(): JSX.Element {
           in every state — including onboarding, whose early return previously
           left it unmounted (#82). It reads everything it needs from the store. */}
       <GlobalFilePicker />
+      {/* Startup update check → non-blocking top-right toast (#162). */}
+      <UpdateBanner />
     </HashRouter>
   )
 }
