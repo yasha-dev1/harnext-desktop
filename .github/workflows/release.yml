@@ -49,6 +49,9 @@ jobs:
 
       - name: Build @harnext/core
         working-directory: harnext
+        # Force bash on all runners; windows-latest defaults `run:` to PowerShell,
+        # which can't parse the POSIX shell syntax these steps use.
+        shell: bash
         run: |
           npm ci
           npm -w packages/core run build
@@ -64,6 +67,7 @@ jobs:
       # tarball so it's a real package whose deps land in node_modules.
       - name: Install desktop dependencies (@harnext/core as a packed tarball)
         working-directory: harnext-desktop
+        shell: bash # `TARBALL=$(...)` is POSIX syntax; PowerShell on windows-latest rejects it.
         run: |
           npm install --no-audit --no-fund
           TARBALL=$(cd ../harnext/packages/core && npm pack --silent | tail -1)
