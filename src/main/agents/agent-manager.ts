@@ -54,6 +54,7 @@ import {
   PLANNER_SYSTEM_PROMPT,
   withWorkingDir
 } from './goal-prompts'
+import { READ_ONLY_BASH } from './goal-policy'
 
 type AgentEvent = Parameters<AgentSessionEventListener>[0]
 
@@ -835,14 +836,14 @@ export class AgentManager {
   private async runGoal(agent: LiveAgent, goal: string, images?: string[]): Promise<void> {
     const settings = db.getSettings()
 
-    // 1 — planner (smart model, read-only)
+    // 1 — planner (smart model, read-only shell)
     this.setStatus(agent.id, 'running', 'Planning the work')
     agent.plannerPresentedPlan = false
     agent.plannerPlan = ''
     const planner = await this.createSession(agent, {
       modelId: agent.smartModel!,
       role: 'plan',
-      permissionMode: 'plan',
+      ...READ_ONLY_BASH,
       systemPrompt: withWorkingDir(PLANNER_SYSTEM_PROMPT, agent.cwd),
       mcpDisabled: true
     })
@@ -886,7 +887,7 @@ export class AgentManager {
         const evaluator = await this.createSession(agent, {
           modelId: agent.smartModel!,
           role: 'eval',
-          permissionMode: 'plan',
+          ...READ_ONLY_BASH,
           systemPrompt: withWorkingDir(EVALUATOR_SYSTEM_PROMPT, agent.cwd),
           mcpDisabled: true
         })
@@ -914,6 +915,8 @@ export class AgentManager {
       permissionMode: 'acceptEdits' | 'plan' | 'bypassPermissions'
       systemPrompt?: string
       mcpDisabled?: boolean
+      /** Tools to hide/block (e.g. write/edit for a read-only planner). */
+      disallowedTools?: readonly string[]
       /** Seed history when resuming an ended conversation (harnext#46). */
       initialMessages?: AgentMessage[]
     }
@@ -924,6 +927,7 @@ export class AgentManager {
       modelId: opts.modelId,
       thinkingLevel: agent.thinkingLevel,
       permissionMode: opts.permissionMode,
+      disallowedTools: opts.disallowedTools,
       systemPrompt: opts.systemPrompt,
       mcpDisabled: opts.mcpDisabled,
       quiet: true,
