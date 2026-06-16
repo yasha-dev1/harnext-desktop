@@ -1,7 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes, useMatch } from 'react-router-dom'
 import type { JSX } from 'react'
+import type { UpdateInfo } from '@shared/types'
 import { useAppStore } from './stores/useAppStore'
+import { UpdateToast } from './components/UpdateToast'
+import { shouldShowUpdate } from './lib/update-popup'
 import Titlebar from './components/Titlebar'
 import FilePicker from './components/FilePicker'
 import Onboarding from './views/Onboarding'
@@ -67,6 +70,48 @@ function Shell(): JSX.Element {
   )
 }
 
+const UPDATE_DISMISSED_KEY = 'harnext.updateDismissed'
+
+// Checks GitHub releases on startup and shows a top-right one-click update popup
+// (#162). Dismissing a version is remembered (localStorage) so it won't nag until
+// a newer one ships. Best-effort and defensive: `checkForUpdate` is optional so a
+// failed check — or a test stub without it — never breaks the app.
+function UpdateGate(): JSX.Element | null {
+  const [info, setInfo] = useState<UpdateInfo | null>(null)
+  const [dismissed, setDismissed] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(UPDATE_DISMISSED_KEY)
+    } catch {
+      return null
+    }
+  })
+
+  useEffect(() => {
+    Promise.resolve(window.api.checkForUpdate?.())
+      .then((res) => res && setInfo(res))
+      .catch(() => {})
+  }, [])
+
+  if (!info || !shouldShowUpdate(info, dismissed)) return null
+
+  return (
+    <UpdateToast
+      info={info}
+      onUpdate={() => {
+        if (info.url) void window.api.openExternal(info.url)
+      }}
+      onDismiss={() => {
+        try {
+          if (info.latest) localStorage.setItem(UPDATE_DISMISSED_KEY, info.latest)
+        } catch {
+          /* ignore persistence failures */
+        }
+        setDismissed(info.latest)
+      }}
+    />
+  )
+}
+
 export default function App(): JSX.Element {
   const loadSettings = useAppStore((s) => s.loadSettings)
   const loadProjects = useAppStore((s) => s.loadProjects)
@@ -83,6 +128,7 @@ export default function App(): JSX.Element {
           in every state — including onboarding, whose early return previously
           left it unmounted (#82). It reads everything it needs from the store. */}
       <GlobalFilePicker />
+      <UpdateGate />
     </HashRouter>
   )
 }

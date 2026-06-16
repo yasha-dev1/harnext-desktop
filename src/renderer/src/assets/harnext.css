@@ -4540,6 +4540,74 @@ body.col-resizing {
   text-align: center;
 }
 
+/* ── Update popup (#162) ───────────────────────────────────────────────── */
+.update-toast {
+  position: fixed;
+  top: 44px;
+  right: 16px;
+  z-index: 120;
+  width: 248px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: update-slide-in 0.22s ease-out;
+}
+@keyframes update-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.update-toast .update-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-0);
+}
+.update-toast .update-ver {
+  margin-top: 2px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--tx-1);
+}
+.update-toast .update-action {
+  margin-top: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #1a1206;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.update-toast .update-action:hover {
+  filter: brightness(1.06);
+}
+.update-toast .update-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tx-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.update-toast .update-dismiss:hover {
+  background: var(--bg-3);
+  color: var(--tx-0);
+}
+
 /* ── Open-PR modal ─────────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
