@@ -42,6 +42,7 @@ import {
 import { DiffTracker } from './diff-service'
 import { describeAgentError } from './error-messages'
 import { isExitPlanTool, exitPlanArg, plannerProducedPlan } from './goal-plan'
+import { parsePrepNames, type PrepNames } from './prep-names'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
 import { buildEnvFileContent } from '../env/env-file'
@@ -127,32 +128,32 @@ function buildInitialMessages(
   return out
 }
 
-const WORKTREE_NAME_PROMPT =
-  'You name git branches for coding tasks. Reply with ONLY the branch name: ' +
-  '2-4 lowercase words in kebab-case (hyphen-separated). No "agent/" or ' +
-  '"feature/" prefix, no quotes, no punctuation, no explanation. ' +
-  'Examples: add-csv-export, fix-login-redirect, refactor-auth-context.'
+const PREP_NAMES_PROMPT =
+  'You name a new coding task for a UI. Given the task, reply with EXACTLY two ' +
+  'lines and nothing else:\n' +
+  'Title: <a concise human title, 3-8 words, Title Case, no trailing period>\n' +
+  'Branch: <2-4 lowercase kebab-case words, no agent/ or feature/ prefix>\n' +
+  'Examples:\nTitle: Add CSV Export to Reports\nBranch: add-csv-export'
 
-const WORKTREE_NAME_TIMEOUT_MS = 15_000
+const PREP_NAMES_TIMEOUT_MS = 15_000
 
 /**
- * Ask the model for a concise branch name for the task instead of slugifying
- * the raw prompt. Best-effort: returns null on any error/timeout so worktree
- * creation can fall back to the prompt-derived slug. Runs a minimal, tool-less
- * single-turn session so it's cheap and fast.
+ * Ask the model for a concise conversation title + branch name in one cheap,
+ * tool-less single-turn call (#114). Best-effort: returns null on any
+ * error/timeout so the caller falls back to the prompt-derived title/slug.
  */
-async function generateWorktreeName(
+async function generatePrepDetails(
   provider: string,
   modelId: string,
   cwd: string,
   prompt: string
-): Promise<string | null> {
+): Promise<PrepNames | null> {
   try {
     const { session } = await createAgentSession({
       cwd,
       provider,
       modelId,
-      systemPrompt: WORKTREE_NAME_PROMPT,
+      systemPrompt: PREP_NAMES_PROMPT,
       tools: [],
       skills: [],
       mcpDisabled: true,
@@ -167,7 +168,7 @@ async function generateWorktreeName(
       }
     })
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('worktree-name timeout')), WORKTREE_NAME_TIMEOUT_MS)
+      setTimeout(() => reject(new Error('prep-names timeout')), PREP_NAMES_TIMEOUT_MS)
     )
     try {
       await Promise.race([session.prompt(`Task:\n${prompt.slice(0, 1500)}`), timeout])
@@ -175,12 +176,7 @@ async function generateWorktreeName(
       unsubscribe()
       void session.dispose()
     }
-    const name = out
-      .trim()
-      .split('\n')[0]
-      .replace(/^(agent|feature|feat)\//i, '')
-      .trim()
-    return name || null
+    return out.trim() ? parsePrepNames(out) : null
   } catch {
     return null
   }
@@ -355,7 +351,7 @@ export class AgentManager {
     const provider = input.provider ?? settings.provider
     const isGoal = /(^|\s)\/goal\b/i.test(input.prompt)
     const cleanPrompt = input.prompt.replace(/(^|\s)\/goal\b/i, ' ').trim() || input.prompt
-    const title = cleanPrompt.replace(/\s+/g, ' ').trim().slice(0, 80)
+    const fallbackTitle = cleanPrompt.replace(/\s+/g, ' ').trim().slice(0, 80)
     const permissionMode = input.permissionMode ?? settings.mode
     const model = input.model ?? settings.model
     const smart = input.smart ?? settings.smart
@@ -366,21 +362,23 @@ export class AgentManager {
 
     const agentId = randomUUID()
 
-    // Isolated worktree for git projects — the user's checkout is never touched.
-    // Ask the model for a meaningful branch name first; fall back to the
-    // prompt-derived title if it can't (offline, bad key, timeout…).
     // The project's working repo — its active branch worktree (#96) or the main
     // checkout. Agent worktrees, the env and merges all happen relative to it.
     const repoCwd = db.projectCwd(project)
+    // One cheap-model call names the conversation: a concise title + branch name
+    // from the first prompt (#114). Best-effort — falls back to the prompt slug.
+    const prep = await generatePrepDetails(provider, model, repoCwd, cleanPrompt)
+    const title = prep?.title || fallbackTitle
+
+    // Isolated worktree for git projects — the user's checkout is never touched.
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
-      const suggested = await generateWorktreeName(provider, model, repoCwd, cleanPrompt)
       // No explicit base (#97) → branch off freshly-fetched origin/<default> so
       // agents start from latest upstream main, not a stale local HEAD (#127).
       const baseRef = resolveBaseRef(repoCwd, input.baseBranch)
       worktree = createWorktree(
         repoCwd,
-        suggested ?? title,
+        prep?.branchName ?? title,
         agentId,
         settings.worktreeRoot,
         baseRef
