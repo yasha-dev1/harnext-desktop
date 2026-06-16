@@ -21,6 +21,10 @@ import { ProviderLogo } from '../components/ProviderLogo'
 import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
 import { agentDraftKey } from '../lib/draft-keys'
+import { navigateHistory, caretAtEdge } from '../lib/composer-history'
+
+// Stable reference so the `?? []` fallback doesn't churn the selector.
+const EMPTY_HISTORY: string[] = []
 
 // The model's provider brand logo, falling back to the generic cube when no
 // brand mark exists for that provider so the tag is never icon-less.
@@ -209,6 +213,11 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   const setDraft = useAppStore((s) => s.setDraft)
   const clearDraft = useAppStore((s) => s.clearDraft)
   const setReply = (v: string): void => setDraft(replyKey, v)
+  // Shell-style ↑/↓ prompt history (#133): per-conversation sent prompts.
+  const history = useAppStore((s) => s.promptHistory[replyKey]) ?? EMPTY_HISTORY
+  const pushPromptHistory = useAppStore((s) => s.pushPromptHistory)
+  const [histIndex, setHistIndex] = useState<number | null>(null)
+  const histDraft = useRef('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [resuming, setResuming] = useState(false)
   const att = useAttachments()
@@ -245,6 +254,8 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
     // Image-only is allowed for a reply; steers are text-only.
     if ((!text && (isSteer || att.items.length === 0)) || !canCompose) return
     const images = isSteer ? [] : att.items.map((a) => a.dataUrl)
+    pushPromptHistory(replyKey, text)
+    setHistIndex(null)
     clearDraft(replyKey)
     if (!isSteer) att.clear()
     setSendError(null)
@@ -261,12 +272,23 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   }
 
   // Esc on an empty composer recalls the most recently queued steer for editing.
-  const onComposerKey = (e: React.KeyboardEvent): void => {
+  const onComposerKey = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape' && reply.trim() === '' && pendingSteers.length) {
       e.preventDefault()
       void recallSteer(agent.id).then((t) => t != null && setReply(t))
     } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       void send()
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const ta = e.currentTarget
+      const edge = caretAtEdge(ta.value, ta.selectionStart ?? 0, ta.selectionEnd ?? 0)
+      if (e.key === 'ArrowUp' ? !edge.atFirstLine : !edge.atLastLine) return
+      if (e.key === 'ArrowUp' && history.length === 0) return
+      e.preventDefault()
+      if (histIndex === null) histDraft.current = reply
+      const draft = histIndex === null ? reply : histDraft.current
+      const res = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down', history, histIndex, draft)
+      setHistIndex(res.index)
+      setReply(res.text)
     }
   }
 

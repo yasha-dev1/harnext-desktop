@@ -17,6 +17,7 @@ import type {
   WorktreeDiff
 } from '@shared/types'
 import { playSound } from '../lib/sounds'
+import { pushHistory } from '../lib/composer-history'
 
 function mergeTimeline(fromDb: TimelineItem[], live: TimelineItem[]): TimelineItem[] {
   const seen = new Set(fromDb.map((t) => `${t.kind}:${t.seq}`))
@@ -53,6 +54,10 @@ interface AppStore {
   composerDrafts: Record<string, string>
   setDraft: (key: string, text: string) => void
   clearDraft: (key: string) => void
+
+  /** Sent-prompt history per composer surface, for shell-style ↑/↓ recall (#133). */
+  promptHistory: Record<string, string[]>
+  pushPromptHistory: (key: string, text: string) => void
 
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
@@ -213,6 +218,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     loopsByProject: {},
     loopRuns: {},
     composerDrafts: {},
+    promptHistory: {},
 
     setDraft: (key, text) => set((s) => ({ composerDrafts: { ...s.composerDrafts, [key]: text } })),
     clearDraft: (key) =>
@@ -222,6 +228,11 @@ export const useAppStore = create<AppStore>((set, get) => {
         delete next[key]
         return { composerDrafts: next }
       }),
+
+    pushPromptHistory: (key, text) =>
+      set((s) => ({
+        promptHistory: { ...s.promptHistory, [key]: pushHistory(s.promptHistory[key] ?? [], text) }
+      })),
 
     loadSettings: async () => {
       const settings = await window.api.settings.get()
