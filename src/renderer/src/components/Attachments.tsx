@@ -21,10 +21,13 @@ function ImageGlyph({ size = 15 }: { size?: number }): JSX.Element {
 
 export function AttachButton({
   onPick,
-  disabled
+  disabled,
+  title = 'Attach images'
 }: {
   onPick: (files: FileList | null) => void
   disabled?: boolean
+  /** Tooltip override — e.g. a non-vision-model warning (#131). */
+  title?: string
 }): JSX.Element {
   const ref = useRef<HTMLInputElement>(null)
   return (
@@ -32,7 +35,7 @@ export function AttachButton({
       <button
         type="button"
         className="attach-btn"
-        title="Attach images"
+        title={title}
         aria-label="Attach images"
         disabled={disabled}
         onClick={() => ref.current?.click()}
