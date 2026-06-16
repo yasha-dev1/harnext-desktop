@@ -41,6 +41,7 @@ import {
 } from '../git'
 import { DiffTracker } from './diff-service'
 import { describeAgentError } from './error-messages'
+import { isExitPlanTool, exitPlanArg, plannerProducedPlan } from './goal-plan'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
 import { buildEnvFileContent } from '../env/env-file'
@@ -295,6 +296,11 @@ interface LiveAgent {
   lastStopReason: string | null
   lastErrorMessage: string | null
   lastAssistantText: string
+  // Goal mode: set when the planner presents a plan via `exit_plan`, with the
+  // plan markdown from the tool's argument. Gates (and supplies) the executor's
+  // blueprint so a blocked planner's question isn't implemented (#110).
+  plannerPresentedPlan: boolean
+  plannerPlan: string
   onSettled?: (info: SettleInfo) => void
 }
 
@@ -427,6 +433,8 @@ export class AgentManager {
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
+      plannerPresentedPlan: false,
+      plannerPlan: '',
       onSettled: hooks?.onSettled
     }
     this.live.set(agentId, agent)
@@ -605,6 +613,8 @@ export class AgentManager {
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
+      plannerPresentedPlan: false,
+      plannerPlan: '',
       onSettled: undefined
     }
     this.live.set(agentId, agent)
@@ -819,6 +829,8 @@ export class AgentManager {
 
     // 1 — planner (smart model, read-only)
     this.setStatus(agent.id, 'running', 'Planning the work')
+    agent.plannerPresentedPlan = false
+    agent.plannerPlan = ''
     const planner = await this.createSession(agent, {
       modelId: agent.smartModel!,
       role: 'plan',
@@ -827,8 +839,17 @@ export class AgentManager {
       mcpDisabled: true
     })
     await planner.prompt(goal, images)
-    const blueprint = agent.lastAssistantText
-    if (agent.abortRequested || !blueprint) {
+    // The blueprint is the plan the planner presented via exit_plan; fall back
+    // to its final message if the tool arg was empty.
+    const blueprint = agent.plannerPlan || agent.lastAssistantText
+    if (agent.abortRequested) {
+      this.settle(agent)
+      return
+    }
+    // Only hand off to the executor when the planner genuinely produced a plan
+    // (presented it via exit_plan). A blocked planner that asked a question is
+    // surfaced and the run pauses for the user instead (#110).
+    if (!plannerProducedPlan(agent.plannerPresentedPlan, blueprint)) {
       this.settle(agent)
       return
     }
@@ -953,6 +974,13 @@ export class AgentManager {
         break
       }
       case 'tool_execution_start': {
+        // The planner presenting its plan via exit_plan is what makes the
+        // blueprint real — gate the executor handoff on it, and take the plan
+        // markdown from the tool's argument as the authoritative blueprint (#110).
+        if (role === 'plan' && isExitPlanTool(event.toolName)) {
+          agent.plannerPresentedPlan = true
+          agent.plannerPlan = exitPlanArg(event.args ?? {})
+        }
         if (!agent.isGit) {
           agent.diffTracker.onToolStart(event.toolCallId, event.toolName, event.args ?? {})
         }
