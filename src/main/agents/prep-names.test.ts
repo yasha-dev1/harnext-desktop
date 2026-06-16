@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePrepNames, cleanTitle, cleanBranchName } from './prep-names'
+import { parsePrepNames, cleanTitle, cleanBranchName, fallbackBranchFromPrompt } from './prep-names'
 
 describe('parsePrepNames — title + branch from the prepare step (#114)', () => {
   it('parses the labelled two-line response', () => {
@@ -56,5 +56,32 @@ describe('cleanBranchName', () => {
   it('drops agent/feature prefixes and quotes', () => {
     expect(cleanBranchName('feature/add-export')).toBe('add-export')
     expect(cleanBranchName('Branch: `fix-bug`')).toBe('fix-bug')
+  })
+})
+
+describe('fallbackBranchFromPrompt — sanitized degraded-path branch (#114, point 3)', () => {
+  it('strips URLs so a URL-heavy prompt never slugs to https-github-com-…', () => {
+    const out = fallbackBranchFromPrompt(
+      'https://github.com/yasha-dev1/harnext-desktop/issues/114 implement this'
+    )
+    expect(out).not.toMatch(/https?/i)
+    expect(out).not.toMatch(/github\.com/i)
+    expect(out).toContain('implement')
+  })
+
+  it('keeps the first few real words of a normal prompt', () => {
+    expect(fallbackBranchFromPrompt('Add CSV export to the reports page please now thanks')).toBe(
+      'Add CSV export to the reports'
+    )
+  })
+
+  it('drops bare www links and punctuation', () => {
+    const out = fallbackBranchFromPrompt('see www.example.com/docs — fix the parser!')
+    expect(out).not.toMatch(/www|example/i)
+    expect(out).toContain('fix')
+  })
+
+  it('falls back to "task" when the prompt is only a URL', () => {
+    expect(fallbackBranchFromPrompt('https://example.com/a/b/c')).toBe('task')
   })
 })

@@ -42,7 +42,7 @@ import {
 import { DiffTracker } from './diff-service'
 import { describeAgentError } from './error-messages'
 import { isExitPlanTool, exitPlanArg, plannerProducedPlan } from './goal-plan'
-import { parsePrepNames, type PrepNames } from './prep-names'
+import { parsePrepNames, fallbackBranchFromPrompt, type PrepNames } from './prep-names'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
 import { buildEnvFileContent } from '../env/env-file'
@@ -378,7 +378,9 @@ export class AgentManager {
       const baseRef = resolveBaseRef(repoCwd, input.baseBranch)
       worktree = createWorktree(
         repoCwd,
-        prep?.branchName ?? title,
+        // Sanitized fallback (URLs stripped) so a degraded prep call on a
+        // URL-heavy prompt can't yield a `https-github-com-…` branch (#114).
+        prep?.branchName ?? fallbackBranchFromPrompt(cleanPrompt),
         agentId,
         settings.worktreeRoot,
         baseRef

@@ -31,6 +31,27 @@ export function cleanBranchName(raw: string): string {
 }
 
 /**
+ * Sanitized branch-name source from the raw prompt, used when the prep call
+ * fails/times out (#114, point 3). Strips URLs first so a URL-heavy prompt can't
+ * slugify into `https-github-com-…`; keeps the first few real words as a short
+ * human slug (createWorktree slugifies further). Falls back to `task` when the
+ * prompt is nothing but a URL.
+ */
+export function fallbackBranchFromPrompt(prompt: string): string {
+  const words = prompt
+    .replace(/https?:\/\/\S+/gi, ' ') // drop URLs
+    .replace(/\bwww\.\S+/gi, ' ') // drop bare www links
+    .replace(/[^A-Za-z0-9\s-]+/g, ' ') // drop punctuation/symbols
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(' ')
+  return words || 'task'
+}
+
+/**
  * Pull the title + branch name out of the model's response. Prefers explicit
  * `Title:` / `Branch:` labels; otherwise the first non-empty line is the title.
  * Either field may come back empty — the caller falls back to the prompt.
