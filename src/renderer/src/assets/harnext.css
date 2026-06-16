@@ -4799,7 +4799,9 @@ body.col-resizing {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
-  font: 11.5px/1.55 ui-monospace, monospace;
+  font:
+    11.5px/1.55 ui-monospace,
+    monospace;
   color: var(--tx-1);
   white-space: pre-wrap;
   word-break: break-word;
