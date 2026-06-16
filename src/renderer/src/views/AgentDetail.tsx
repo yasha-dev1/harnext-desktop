@@ -17,6 +17,7 @@ import { useAppStore } from '../stores/useAppStore'
 import StatusPill from '../components/StatusPill'
 import { elapsed, onActivate, providerOf, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
+import { FailurePanel } from '../components/FailurePanel'
 import { ProviderLogo } from '../components/ProviderLogo'
 import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
@@ -1179,7 +1180,9 @@ export default function AgentDetail(): JSX.Element {
   const agentsLoaded = useAppStore((s) => s.agentIdsByProject[projectId] !== undefined)
 
   const [actionError, setActionError] = useState<string | null>(null)
+  const [errorDismissed, setErrorDismissed] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const resumeAgent = useAppStore((s) => s.resumeAgent)
   const renameAgent = useAppStore((s) => s.renameAgent)
 
   // Reset per-agent UI state when navigating between agents.
@@ -1187,6 +1190,7 @@ export default function AgentDetail(): JSX.Element {
   if (lastAgentId !== agentId) {
     setLastAgentId(agentId)
     setActionError(null)
+    setErrorDismissed(false)
   }
 
   useEffect(() => {
@@ -1266,10 +1270,16 @@ export default function AgentDetail(): JSX.Element {
               {elapsed(agent.createdAt, isRunning ? now : agent.updatedAt)}
             </span>
           </div>
-          {(actionError || agent.error) && (
-            <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--err)' }}>
-              {actionError ?? agent.error}
-            </div>
+          {(actionError || (agent.error && !errorDismissed)) && (
+            <FailurePanel
+              error={actionError ?? agent.error!}
+              onDismiss={() => (actionError ? setActionError(null) : setErrorDismissed(true))}
+              onRetry={
+                !actionError && agent.status === 'failed'
+                  ? () => void resumeAgent(agent.id)
+                  : undefined
+              }
+            />
           )}
         </div>
         <div className="detail-actions">
