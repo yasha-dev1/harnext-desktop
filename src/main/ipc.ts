@@ -11,6 +11,7 @@ import type {
   McpScope,
   McpServerConfig,
   ProjectEnvConfig,
+  ProjectSecretsInfo,
   StartAgentInput
 } from '../shared/types'
 import { addServer, listServers, removeServer, setServerEnabled } from './mcp'
@@ -18,6 +19,14 @@ import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
 import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
+import {
+  importSecretsFromEnvFile,
+  listProjectSecretKeys,
+  removeProjectSecret,
+  secretsAvailable,
+  setProjectSecret,
+  setProjectSecretsFromText
+} from './env/secrets'
 import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
@@ -53,6 +62,15 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     const result = await dialog.showOpenDialog(win, {
       properties: ['openFile'],
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'] }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:pickEnvFile', async () => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'showHiddenFiles']
     })
     return result.canceled ? null : result.filePaths[0]
   })
@@ -223,6 +241,33 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     if (!project) throw new Error('Project not found')
     const base = project.envConfig ?? emptyEnvConfig()
     return db.setProjectEnvConfig(id, { ...base, ...patch }) ?? project
+  })
+
+  // Per-project encrypted secret store (#123). Only names cross to the renderer.
+  const secretsInfo = (id: number): ProjectSecretsInfo => ({
+    available: secretsAvailable(),
+    keys: listProjectSecretKeys(id)
+  })
+  ipcMain.handle('projects:secrets', (_e, id: number) => secretsInfo(id))
+  ipcMain.handle('projects:setSecret', (_e, id: number, key: string, value: string) => {
+    if (!db.getProject(id)) throw new Error('Project not found')
+    setProjectSecret(id, key, value)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:setSecretsBulk', (_e, id: number, text: string) => {
+    if (!db.getProject(id)) throw new Error('Project not found')
+    setProjectSecretsFromText(id, text)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:removeSecret', (_e, id: number, key: string) => {
+    removeProjectSecret(id, key)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:importSecretsFromEnv', (_e, id: number, path?: string) => {
+    const project = db.getProject(id)
+    if (!project) throw new Error('Project not found')
+    importSecretsFromEnvFile(id, project.path, path ?? '.env')
+    return secretsInfo(id)
   })
 
   // agents

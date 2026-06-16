@@ -55,6 +55,12 @@ export interface EnvOverrides {
   workspaceService?: string
   /** Force which exposed service the explorer opens by default. */
   primaryService?: string
+  /**
+   * Env-file the sandbox feeds compose via `--env-file`, so `${VAR}` interpolates.
+   * Absolute, or relative to the project root; resolved against the MAIN checkout
+   * (never the worktree). Unset → fall back to `.env` in the main checkout if present.
+   */
+  envFile?: string
 }
 
 export interface ProjectEnvConfig {
@@ -80,6 +86,17 @@ export interface ProjectEnvConfig {
   detectedAt: number
   /** user-specified config that overrides detection (compose file, workspace, preview) */
   overrides?: EnvOverrides
+}
+
+/**
+ * Per-project secret store state, surfaced to the renderer. Only secret NAMES
+ * ever cross the IPC boundary — values stay encrypted in the main process.
+ */
+export interface ProjectSecretsInfo {
+  /** OS keychain (Electron safeStorage) usable — false → storing is refused. */
+  available: boolean
+  /** Stored secret names, sorted. */
+  keys: string[]
 }
 
 export interface DockerStatus {
@@ -402,6 +419,8 @@ export interface DesktopApi {
   openExternal(url: string): Promise<void>
   /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
   pickAudioFile(): Promise<string | null>
+  /** Pick an env-file (returns its absolute path) to point the sandbox at. */
+  pickEnvFile(): Promise<string | null>
   /** Read a local audio file as a data URL so the renderer can play it. */
   readSound(path: string): Promise<string | null>
   settings: {
@@ -437,6 +456,15 @@ export interface DesktopApi {
     setEnvConfig(id: number, patch: Partial<ProjectEnvConfig>): Promise<Project>
     /** Set user overrides (compose file / workspace / preview service) and re-detect. */
     setEnvOverrides(id: number, patch: EnvOverrides): Promise<Project>
+    /** Per-project encrypted secret store: keychain availability + stored names. */
+    secrets(id: number): Promise<ProjectSecretsInfo>
+    /** Encrypt and store one secret; throws if the keychain is unavailable. */
+    setSecret(id: number, key: string, value: string): Promise<ProjectSecretsInfo>
+    /** Parse pasted KEY=value text and store each secret encrypted. */
+    setSecretsBulk(id: number, text: string): Promise<ProjectSecretsInfo>
+    removeSecret(id: number, key: string): Promise<ProjectSecretsInfo>
+    /** Import KEY=value pairs from an env-file (default: `.env` in the project root). */
+    importSecretsFromEnv(id: number, path?: string): Promise<ProjectSecretsInfo>
   }
   agents: {
     list(projectId: number): Promise<AgentMeta[]>

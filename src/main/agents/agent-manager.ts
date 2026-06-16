@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import {
   createAgentSession,
   getProviderById,
@@ -39,6 +41,8 @@ import {
 import { DiffTracker } from './diff-service'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
+import { buildEnvFileContent } from '../env/env-file'
+import { resolveProjectSecrets } from '../env/secrets'
 import {
   EVALUATOR_SYSTEM_PROMPT,
   GENERATOR_SYSTEM_PROMPT,
@@ -292,6 +296,37 @@ interface LiveAgent {
   onSettled?: (info: SettleInfo) => void
 }
 
+/**
+ * Resolve the env-file the sandbox feeds compose (#123): inline secrets (decrypted
+ * here, in the main process) merged over a base env-file. The base is the project's
+ * `envFile` override, or `.env` in the MAIN checkout when present — never the
+ * worktree, which is gitignored and would risk committing the secrets. Returns a
+ * direct `path` when no inline secrets exist (faithful to the user's file), `content`
+ * (a temp file, written outside the worktree) when they do, or undefined for neither.
+ */
+function resolveSandboxEnvFile(project: Project): { path?: string; content?: string } | undefined {
+  const overrideFile = project.envConfig?.overrides?.envFile
+  const basePath = overrideFile
+    ? isAbsolute(overrideFile)
+      ? overrideFile
+      : join(project.path, overrideFile)
+    : join(project.path, '.env')
+  const hasBase = existsSync(basePath)
+  const secrets = resolveProjectSecrets(project.id)
+
+  if (Object.keys(secrets).length === 0) return hasBase ? { path: basePath } : undefined
+
+  let baseRaw: string | null = null
+  if (hasBase) {
+    try {
+      baseRaw = readFileSync(basePath, 'utf8')
+    } catch {
+      /* unreadable base — fall back to secrets only */
+    }
+  }
+  return { content: buildEnvFileContent(baseRaw, secrets) }
+}
+
 export class AgentManager {
   private live = new Map<string, LiveAgent>()
 
@@ -422,7 +457,12 @@ export class AgentManager {
     this.setSandboxStatus(agent, 'preparing')
     try {
       const name = sandboxProjectName(project.path, agent.worktreePath)
-      const handle = await bootstrapSandbox(env, agent.worktreePath, name)
+      const handle = await bootstrapSandbox(
+        env,
+        agent.worktreePath,
+        name,
+        resolveSandboxEnvFile(project)
+      )
       agent.sandbox = handle
       agent.executor = new DockerExecutor(handle.container, handle.teardown)
       agent.execCwd = handle.execCwd

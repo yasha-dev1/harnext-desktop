@@ -192,6 +192,17 @@ const MIGRATIONS = [
   `
   ALTER TABLE projects ADD COLUMN active_worktree_path TEXT;
   ALTER TABLE projects ADD COLUMN active_branch TEXT;
+  `,
+  // v6 — per-project encrypted secret store (#123). Values are safeStorage
+  // ciphertext (base64); the column never holds a plaintext secret.
+  `
+  CREATE TABLE project_secrets (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key        TEXT NOT NULL,
+    value_enc  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, key)
+  );
   `
 ]
 
@@ -378,6 +389,27 @@ export function setProjectEnvConfig(id: number, config: ProjectEnvConfig): Proje
 
 export function removeProject(id: number): void {
   db.prepare('DELETE FROM projects WHERE id = ?').run(id)
+}
+
+// ── project secrets (encrypted; see env/secrets.ts) ──────────────────
+// Storage only — these store/return ciphertext. Encryption lives in
+// env/secrets.ts so the plaintext never reaches the DB layer.
+
+export function upsertSecret(projectId: number, key: string, valueEnc: string): void {
+  db.prepare(
+    `INSERT INTO project_secrets (project_id, key, value_enc, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(project_id, key) DO UPDATE SET value_enc = excluded.value_enc`
+  ).run(projectId, key, valueEnc, Date.now())
+}
+
+export function listSecretRows(projectId: number): { key: string; value_enc: string }[] {
+  return db
+    .prepare('SELECT key, value_enc FROM project_secrets WHERE project_id = ? ORDER BY key')
+    .all(projectId) as { key: string; value_enc: string }[]
+}
+
+export function deleteSecret(projectId: number, key: string): void {
+  db.prepare('DELETE FROM project_secrets WHERE project_id = ? AND key = ?').run(projectId, key)
 }
 
 // ── agents ───────────────────────────────────────────────────────────
