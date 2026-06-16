@@ -8,6 +8,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
+import { canSubmitComposer } from '../lib/composer'
 import { imagesWouldBeDropped, NON_VISION_ATTACH_HINT } from '../lib/vision-models'
 import { projectDraftKey } from '../lib/draft-keys'
 import { navigateHistory, caretAtEdge } from '../lib/composer-history'
@@ -88,9 +89,11 @@ export default function Compose(): JSX.Element {
     ...new Set([currentBranch, ...(branches?.local ?? []), ...(branches?.remote ?? [])])
   ].filter(Boolean)
 
+  const canSubmit = canSubmitComposer(text, att.items.length > 0)
+
   const start = async (): Promise<void> => {
     // Allow an image-only prompt (text or at least one attachment).
-    if ((!text.trim() && att.items.length === 0) || starting) return
+    if (!canSubmit || starting) return
     setStarting(true)
     setError(null)
     try {
@@ -234,7 +237,11 @@ export default function Compose(): JSX.Element {
               </>
             )}
             <span className="grow" />
-            <button className="composer-start" onClick={() => void start()} disabled={starting}>
+            <button
+              className="composer-start"
+              onClick={() => void start()}
+              disabled={starting || !canSubmit}
+            >
               <Icon.play size={14} />
               {starting ? 'Starting…' : 'Start agent'} <kbd>⌘↵</kbd>
             </button>
