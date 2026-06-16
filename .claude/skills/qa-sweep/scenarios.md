@@ -62,6 +62,16 @@ Flow: Welcome → Theme → Provider+key → Open first project. 4-step stepper.
   selects replace the single model select. Removing `/goal` reverts.
 - Model select(s) persist to settings (`saveSettings`); permission-mode select
   (Auto-accept edits / Plan only / Full access) persists.
+- **Reasoning effort** selector (#92): `thinkingLevel` (off…xhigh) persists to
+  settings and is shown on the composer; in goal mode it applies to the planner.
+- **Image attachments** (#76): paste an image, drag-drop one, and pick via the
+  attach button — each shows in the attachment bar with a remove (✕). Non-image
+  files are ignored; an oversized image (>20 MB) shows a "too large" error and is
+  not attached. With a **non-vision model** selected, a warning shows that the
+  image won't be sent (#131). An image-only prompt (no text) can still Start.
+- **Base-branch selection** (#99): on a git project the composer offers a base
+  branch (defaults to the project's current branch); the agent's worktree is cut
+  from the chosen ref. Picking a non-default base is reflected in the new agent.
 - Start: ⌘/Ctrl+Enter or the Start button. Empty/whitespace prompt does nothing.
   Button shows "Starting…" and is disabled mid-start; on success routes to the
   agent detail; on failure an error card shows the message (e.g. missing key).
@@ -78,10 +88,18 @@ Flow: Welcome → Theme → Provider+key → Open first project. 4-step stepper.
   args, result, error styling). Text deltas are throttled (~50ms) — should read
   smoothly, not jump.
 - Send a follow-up prompt to a running/input agent (`agents.prompt`).
+- **Steer a running agent** (#79): while an agent is mid-run, queue one or more
+  messages — they're held and delivered at the next turn boundary (not injected
+  mid-turn). Queued steers are visible as pending; if the run aborts/fails before
+  delivery they surface as undelivered (recall to re-send). Distinct from the
+  follow-up above, which targets a running/idle agent.
 - Abort a running agent (`agents.abort`) → status → Paused.
 - Switch between agents in the sidebar; timelines don't bleed across agents
   (keyed by agentId).
-- Restart the app: past conversations replay **read-only** (known: no resume).
+- **Resume an ended conversation** (#80): after the app restarts, past
+  conversations load; an ended one can be **resumed** — it rehydrates the session
+  and respawns the sandbox, and you can continue the conversation (not read-only).
+  Watch-for: a resume that silently fails or replays read-only is a regression.
 - Watch-for: empty timeline state; tool-call result truncation/overflow; error
   tool calls clearly marked; progress text updates; many agents → sidebar scrolls;
   switching mid-stream doesn't drop events.
@@ -97,6 +115,18 @@ Flow: Welcome → Theme → Provider+key → Open first project. 4-step stepper.
 - Non-git project: no worktree — verify the UI handles "nothing to review".
 - Watch-for: large diffs render/scroll OK; empty diff state; merge conflict /
   failure surfaces an error rather than silently failing; add/del totals match.
+
+## 6b. Branch switcher  (check a branch out into a worktree)  *(#104)*
+
+- On a git project the titlebar branch chip opens a searchable list of local +
+  remote branches; the current/active branch is marked.
+- Pick a branch → it's **checked out into a worktree** and the project's context
+  points at it (`activeWorktreePath`/`activeBranch`); agents and the env then run
+  in that worktree. A pinned branch shows in the chip.
+- Search filters the list (case-insensitive); a no-match query shows the empty
+  message; the list scrolls when long.
+- Watch-for: switching while an agent is running; a branch that fails to check
+  out surfaces an error (not a silent no-op); switching back to the main checkout.
 
 ## 7. Goal mode (evaluator loop)
 
@@ -127,6 +157,15 @@ Flow: Welcome → Theme → Provider+key → Open first project. 4-step stepper.
 - Default model, **smart** model, **executor** model selects; provider keys
   (save per provider); default editor; appearance (dark/light, live); toggles
   `openOnDone`, `evalLoop`.
+- **Display name** (#93): editable identity field; the sidebar avatar/initials
+  update to match. Defaults to the OS username; persists across restart.
+- **Reasoning effort** (#92): the `thinkingLevel` selector here matches the
+  composer's and persists (shared setting).
+- **MCP Connector** (#72): add / list / remove / enable-disable MCP servers
+  (user and project scope). Adding a server persists; toggling one off drops it
+  from the live config the next agent session sees; an invalid server config
+  surfaces an error rather than crashing. Project-scope entries are keyed to the
+  current project's cwd.
 - **Provider switch reconciliation** (recently fixed, regression-prone): changing
   provider must reset model/smart/executor to that provider's valid models — never
   leave them pointing at the previous provider's IDs. Verify in Settings *and*
@@ -178,6 +217,15 @@ Flow: Welcome → Theme → Provider+key → Open first project. 4-step stepper.
 ### Suggested order
 1) Onboarding (fresh DB) → 2) titlebar → 3) projects → 9) settings →
 4) compose → 5) agent (scratch repo, tiny prompt, abort early) → 6) diff →
-7) goal → 8) loops → 10) theming → 11) edges → 12) console → 13) a11y.
+6b) branch switcher → 7) goal → 8) loops → 10) theming → 11) edges →
+12) console → 13) a11y.
 
 Keep findings flowing into the report as you go rather than batching at the end.
+
+### Keeping this catalog current
+A QA catalog is only as good as its currency — stale assertions actively mislead
+(see #154: a pre-#80 note told testers resume didn't exist). **When a PR adds or
+changes a user-facing surface, add or adjust its `qa-sweep` scenario in the same
+PR** (and refresh the `SKILL.md` front-matter `description` if it's a new
+surface). Tie this into the PR checklist (#148) so the one end-to-end safety net
+doesn't drift from the shipped product again.
