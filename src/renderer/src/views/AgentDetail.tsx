@@ -21,6 +21,7 @@ import { ProviderLogo } from '../components/ProviderLogo'
 import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
 import { agentDraftKey } from '../lib/draft-keys'
+import { groupTimeline, stepCount, type TimelineGroup } from '../lib/timeline-groups'
 import { navigateHistory, caretAtEdge } from '../lib/composer-history'
 
 // Stable reference so the `?? []` fallback doesn't churn the selector.
@@ -90,7 +91,16 @@ function MsgText({ text }: { text: string }): JSX.Element {
   )
 }
 
-const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }): JSX.Element {
+const Msg = memo(function Msg({
+  m,
+  agent,
+  hideRole
+}: {
+  m: MessageItem
+  agent: AgentMeta
+  // The role header is suppressed when the stage group already shows it (#106).
+  hideRole?: boolean
+}): JSX.Element {
   const r = ROLE_META[m.role]
   const Ic = Icon[r.ic]
   return (
@@ -99,15 +109,17 @@ const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }
         <Ic size={15} />
       </span>
       <div className="msg-body">
-        <div className="msg-role">
-          <b>{r.name}</b>
-          {m.role !== 'user' && (
-            <span className="model">
-              <ModelLogo modelId={roleModelId(agent, m.role)} size={11} />
-              {roleModel(agent, m.role)}
-            </span>
-          )}
-        </div>
+        {!hideRole && (
+          <div className="msg-role">
+            <b>{r.name}</b>
+            {m.role !== 'user' && (
+              <span className="model">
+                <ModelLogo modelId={roleModelId(agent, m.role)} size={11} />
+                {roleModel(agent, m.role)}
+              </span>
+            )}
+          </div>
+        )}
         {m.role === 'eval' && m.verdict ? (
           <div className="eval-card">
             <div className="eval-head">
@@ -199,6 +211,79 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
     </div>
   )
 })
+
+function readCollapsedStages(agentId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(`harnext.stages.${agentId}`) ?? '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+/** Per-agent collapsed-stage state, persisted to localStorage (#106). */
+function useStageCollapsed(agentId: string, key: string): [boolean, (v: boolean) => void] {
+  const [collapsed, setCollapsed] = useState(() => readCollapsedStages(agentId).has(key))
+  const set = (v: boolean): void => {
+    setCollapsed(v)
+    const s = readCollapsedStages(agentId)
+    if (v) s.add(key)
+    else s.delete(key)
+    try {
+      localStorage.setItem(`harnext.stages.${agentId}`, JSON.stringify([...s]))
+    } catch {
+      /* storage unavailable — collapse is still in-memory for this view */
+    }
+  }
+  return [collapsed, set]
+}
+
+/** A collapsible Planner / Executor / Evaluator stage section (#106). */
+export function StageGroup({
+  group,
+  agent
+}: {
+  group: TimelineGroup
+  agent: AgentMeta
+}): JSX.Element {
+  const [collapsed, setCollapsed] = useStageCollapsed(agent.id, group.key)
+  const meta = ROLE_META[group.role]
+  const Ic = Icon[meta.ic]
+  const steps = stepCount(group)
+  return (
+    <div className={'stage-group' + (collapsed ? ' collapsed' : '')}>
+      <button
+        className="stage-head"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className={'msg-ic ' + meta.icCls}>
+          <Ic size={14} />
+        </span>
+        <b>{meta.name}</b>
+        <span className="stage-model">
+          <ModelLogo modelId={roleModelId(agent, group.role)} size={11} />
+          {roleModel(agent, group.role)}
+        </span>
+        {steps > 0 && (
+          <span className="stage-count">
+            {steps} step{steps > 1 ? 's' : ''}
+          </span>
+        )}
+        <span className={'stage-chev' + (collapsed ? '' : ' open')}>
+          <Icon.chevron size={13} />
+        </span>
+      </button>
+      {!collapsed &&
+        group.items.map((item) =>
+          item.kind === 'message' ? (
+            <Msg key={`m${item.seq}`} m={item} agent={agent} hideRole />
+          ) : (
+            <ToolCall key={`t${item.seq}`} t={item} />
+          )
+        )}
+    </div>
+  )
+}
 
 function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[] }): JSX.Element {
   const streaming = useAppStore((s) => s.streaming[agent.id])
@@ -302,11 +387,18 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
       }}
     >
       <div className="thread-lead">Conversation</div>
-      {timeline.map((item) =>
-        item.kind === 'message' ? (
-          <Msg key={`m${item.seq}`} m={item} agent={agent} />
+      {groupTimeline(timeline).map((group) =>
+        // User turns stay flat; agent stages (plan/exec/eval) are collapsible (#106).
+        group.role === 'user' ? (
+          group.items.map((item) =>
+            item.kind === 'message' ? (
+              <Msg key={`m${item.seq}`} m={item} agent={agent} />
+            ) : (
+              <ToolCall key={`t${item.seq}`} t={item} />
+            )
+          )
         ) : (
-          <ToolCall key={`t${item.seq}`} t={item} />
+          <StageGroup key={group.key} group={group} agent={agent} />
         )
       )}
       {streaming?.text && (
