@@ -87,18 +87,37 @@ function freePort(): Promise<number> {
  * project). Services reach each other by service name, so connectivity is
  * unaffected. Everything else (bind-mount of `.`, named volumes) is already
  * per-worktree via `--project-directory <worktree>` + the unique `-p` name.
+ *
+ * The workspace service additionally gets a keep-alive entrypoint (#124): the
+ * agent only needs a stable shell with the image's toolchain + the bind-mounted
+ * source, NOT the app actually running. If we let the service run its real
+ * command (e.g. `python main.py run`) and it crashes on boot (bad config, missing
+ * secret), the container dies and the agent has no shell to exec into. Overriding
+ * the workspace's entrypoint to `sleep infinity` (and clearing its command) keeps
+ * the container up regardless; the agent builds/runs/tests the app manually once
+ * ready. Only the workspace is kept alive — preview/exposed services keep their
+ * real command so the explorer can still reach a running app.
  */
 export function buildOverride(env: ProjectEnvConfig, hostPorts: Record<string, number>): string {
   const exposedBy = new Map(env.exposed.map((e) => [e.service, e]))
   // Every detected service appears so its `container_name:` (if any) is reset.
+  // The workspace service is always present so its keep-alive override lands even
+  // if it has no published ports and wasn't otherwise detected as exposed.
   const services = new Set<string>([
     ...env.services.map((s) => s.name),
-    ...env.exposed.map((e) => e.service)
+    ...env.exposed.map((e) => e.service),
+    ...(env.workspaceService ? [env.workspaceService] : [])
   ])
   const lines = ['services:']
   for (const name of services) {
     lines.push(`  ${name}:`)
     lines.push('    container_name: !reset null')
+    if (name === env.workspaceService) {
+      // Keep the workspace container alive as a bare shell (#124). `!reset null`
+      // drops the image/base command so it isn't appended as args to sleep.
+      lines.push('    entrypoint: ["sleep", "infinity"]')
+      lines.push('    command: !reset null')
+    }
     const e = exposedBy.get(name)
     if (e) {
       lines.push('    ports: !override')
@@ -153,6 +172,24 @@ export async function waitForContainerReady(
     }
     await delay(1500, opts.signal)
   }
+}
+
+/**
+ * Build an actionable error for a workspace container that exited before the
+ * agent could use it (#124 bonus). `docker compose ps -q` only lists *running*
+ * containers, so a crashed workspace surfaced as the opaque "has no container".
+ * With `ps -aq` we can find the exited container and report its exit code plus
+ * the tail of its logs (e.g. the pydantic config error) so the failure is
+ * diagnosable instead of mysterious.
+ */
+export function exitedContainerError(
+  service: string,
+  detail: { exitCode?: number | null; logs?: string }
+): string {
+  const code = detail.exitCode != null ? ` (exit code ${detail.exitCode})` : ''
+  const logs = detail.logs?.trim()
+  const tail = logs ? `\n${logs}` : ''
+  return `Workspace service "${service}" exited before it was ready${code}.${tail}`
 }
 
 /**
@@ -249,9 +286,37 @@ export async function bootstrapSandbox(
       signal
     })
 
-    const psq = await pExecFile('docker', [...composeArgs, 'ps', '-q', env.workspaceService])
+    // `ps -aq` (not `-q`) lists exited containers too, so a workspace that died
+    // is still found — letting us report its exit code + logs instead of the
+    // opaque "has no container" (#124). With the keep-alive override it should be
+    // running, but an image that ignores the entrypoint override could still exit.
+    const psq = await pExecFile('docker', [...composeArgs, 'ps', '-aq', env.workspaceService])
     const container = psq.stdout.trim().split('\n').filter(Boolean)[0]
     if (!container) throw new Error(`workspace service "${env.workspaceService}" has no container`)
+
+    const initial = await dockerInspectState(container).catch(() => ({ status: undefined }))
+    if (initial.status === 'exited' || initial.status === 'dead') {
+      let exitCode: number | null = null
+      let logs: string | undefined
+      try {
+        const insp = await pExecFile('docker', [
+          'inspect',
+          '--format',
+          '{{.State.ExitCode}}',
+          container
+        ])
+        exitCode = Number(insp.stdout.trim())
+      } catch {
+        /* exit code unavailable */
+      }
+      try {
+        const lg = await pExecFile('docker', ['logs', '--tail', '20', container])
+        logs = (lg.stdout + lg.stderr).trim()
+      } catch {
+        /* logs unavailable */
+      }
+      throw new Error(exitedContainerError(env.workspaceService, { exitCode, logs }))
+    }
 
     // Gate readiness on the workspace container (where the agent execs) instead
     // of the whole stack, so an unrelated service exiting can't fail the sandbox.
