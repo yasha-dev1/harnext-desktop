@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import type { JSX } from 'react'
+import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { BranchList, PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
@@ -9,6 +9,10 @@ import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
 import { projectDraftKey } from '../lib/draft-keys'
+import { navigateHistory, caretAtEdge } from '../lib/composer-history'
+
+// Stable reference so the `?? []` fallback doesn't churn the selector.
+const EMPTY_HISTORY: string[] = []
 
 const QUICK: { ic: IconName; t: string }[] = [
   { ic: 'bolt', t: 'Fix the failing tests' },
@@ -36,6 +40,11 @@ export default function Compose(): JSX.Element {
   const setDraft = useAppStore((s) => s.setDraft)
   const clearDraft = useAppStore((s) => s.clearDraft)
   const setText = (v: string): void => setDraft(draftKey, v)
+  // Shell-style ↑/↓ prompt history (#133): per-project sent prompts.
+  const history = useAppStore((s) => s.promptHistory[draftKey]) ?? EMPTY_HISTORY
+  const pushPromptHistory = useAppStore((s) => s.pushPromptHistory)
+  const [histIndex, setHistIndex] = useState<number | null>(null)
+  const histDraft = useRef('')
   const [starting, setStarting] = useState(false)
   const att = useAttachments()
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +93,8 @@ export default function Compose(): JSX.Element {
       // Only override when the user picked a branch other than the current one.
       const baseBranch = baseValue && baseValue !== currentBranch ? baseValue : undefined
       const meta = await startAgent({ projectId, prompt: text.trim(), images, baseBranch })
+      pushPromptHistory(draftKey, text)
+      setHistIndex(null)
       clearDraft(draftKey)
       att.clear()
       navigate(`/project/${projectId}/agent/${meta.id}`)
@@ -92,6 +103,26 @@ export default function Compose(): JSX.Element {
     } finally {
       setStarting(false)
     }
+  }
+
+  const onComposerKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      void start()
+      return
+    }
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    const ta = e.currentTarget
+    const edge = caretAtEdge(ta.value, ta.selectionStart, ta.selectionEnd)
+    // Only hijack the arrow at the relevant line edge, so multi-line editing works.
+    if (e.key === 'ArrowUp' ? !edge.atFirstLine : !edge.atLastLine) return
+    if (e.key === 'ArrowUp' && history.length === 0) return
+    e.preventDefault()
+    if (histIndex === null) histDraft.current = text // remember the in-progress draft
+    const draft = histIndex === null ? text : histDraft.current
+    const res = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down', history, histIndex, draft)
+    setHistIndex(res.index)
+    setText(res.text)
   }
 
   return (
@@ -117,12 +148,7 @@ export default function Compose(): JSX.Element {
             placeholder="e.g. Add input validation to the signup form — or /goal for a multi-step task…  (paste or drop an image)"
             onChange={(e) => setText(e.target.value)}
             onPaste={att.onPaste}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault()
-                void start()
-              }
-            }}
+            onKeyDown={onComposerKey}
             autoFocus
           />
           <div className="composer-bar">
