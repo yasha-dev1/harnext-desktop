@@ -28,6 +28,7 @@ const api: DesktopApi = {
       ipcRenderer.invoke('mcp:setEnabled', scope, name, enabled, cwd)
   },
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
   pickAudioFile: () => ipcRenderer.invoke('dialog:pickAudioFile'),
   pickEnvFile: () => ipcRenderer.invoke('dialog:pickEnvFile'),
   readSound: (path: string) => ipcRenderer.invoke('sounds:read', path),

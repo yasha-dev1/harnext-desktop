@@ -395,6 +395,18 @@ export interface McpServerRow {
   config: McpServerConfig
 }
 
+/** Result of an auto-update check against GitHub releases (#162/#125). */
+export interface UpdateInfo {
+  /** The running app version. */
+  current: string
+  /** The latest release tag, or null if the check failed / found nothing. */
+  latest: string | null
+  /** The release page URL, for a one-click "view/update" action. */
+  url: string | null
+  /** True when `latest` is strictly newer than `current`. */
+  isUpdate: boolean
+}
+
 // ── renderer API ─────────────────────────────────────────────────────
 export interface DesktopApi {
   win: {
@@ -417,6 +429,8 @@ export interface DesktopApi {
   }
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>
+  /** Check GitHub releases for a newer app version (#162/#125). */
+  checkForUpdate(): Promise<UpdateInfo>
   /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
   pickAudioFile(): Promise<string | null>
   /** Pick an env-file (returns its absolute path) to point the sandbox at. */
