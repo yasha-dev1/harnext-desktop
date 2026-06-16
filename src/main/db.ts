@@ -1,8 +1,10 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
+import { copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
+import { runMigrations } from './migrations'
 
 /** A friendly default identity derived from the machine, not hardcoded. */
 function defaultDisplayName(): string {
@@ -212,12 +214,33 @@ export function initDb(): void {
   db.pragma('foreign_keys = ON')
 
   const version = db.pragma('user_version', { simple: true }) as number
-  for (let i = version; i < MIGRATIONS.length; i++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[i])
-      db.pragma(`user_version = ${i + 1}`)
-    })()
-  }
+  const dbPath = join(app.getPath('userData'), 'harnext.db')
+  runMigrations({
+    version,
+    count: MIGRATIONS.length,
+    apply: (i) =>
+      db.transaction(() => {
+        db.exec(MIGRATIONS[i])
+        db.pragma(`user_version = ${i + 1}`)
+      })(),
+    // Back up an existing DB once before applying any migration, so a failed
+    // post-update migration is recoverable (#162). A fresh DB (v0) has nothing
+    // to lose, so skip it.
+    backup:
+      version > 0
+        ? () => {
+            try {
+              copyFileSync(dbPath, `${dbPath}.bak`)
+            } catch {
+              /* best-effort — never block startup on the backup */
+            }
+          }
+        : undefined,
+    onDowngrade: (dbv, appv) =>
+      console.warn(
+        `[db] schema v${dbv} is newer than this build (v${appv}); skipping migrations to avoid corruption`
+      )
+  })
 
   // A loop run's placeholder ('review' / "Running…") is reconciled to its real
   // outcome by an in-memory onSettled callback that doesn't survive a restart.
