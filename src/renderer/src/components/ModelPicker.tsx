@@ -30,6 +30,7 @@ export function ModelPicker({
   const [hi, setHi] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const baseId = useId()
 
   const all = useMemo(
@@ -49,6 +50,13 @@ export function ModelPicker({
     setHi(idx >= 0 ? idx : 0)
     setOpen(true)
   }
+
+  // Focus the search box when the menu opens — with preventScroll so focusing
+  // the portaled, off-screen-for-a-frame input never scrolls the Settings panel
+  // (the layout-shift half of #102; `autoFocus` did exactly that).
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   // Keep the highlighted row scrolled into view (DOM side-effect only).
   useEffect(() => {
@@ -98,7 +106,7 @@ export function ModelPicker({
           <div className="mp-search">
             <Icon.search size={13} />
             <input
-              autoFocus
+              ref={inputRef}
               value={query}
               placeholder={placeholder}
               onChange={(e) => setQuery(e.target.value)}
