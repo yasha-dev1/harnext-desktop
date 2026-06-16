@@ -15,6 +15,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # one OS failing shouldn't drop the others' artifacts
+      # Serialize the platforms: running electron-builder's GitHub publisher from
+      # three jobs at once races to create the draft release, producing duplicate
+      # drafts with the installers split across them. One at a time, the first job
+      # creates the draft and the rest upload into it.
+      max-parallel: 1
       matrix:
         include:
           - os: macos-latest
