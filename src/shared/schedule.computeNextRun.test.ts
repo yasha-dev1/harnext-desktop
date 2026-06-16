@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeNextRun } from './loops'
-import type { LoopConfig } from '../shared/types'
+import { computeNextRun } from './schedule'
+import type { LoopConfig } from './types'
 
 // Regression guards for computeNextRun (QA-020, fixed in #43) — previously
 // untested. Pure given `from`, so no clock mocking. All dates are built with the

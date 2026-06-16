@@ -1,33 +1,14 @@
-import type { AgentPush, LoopConfig, LoopInput, LoopMeta, LoopType } from '../shared/types'
-import { buildCadence, intervalMinutes, weekdays } from '../shared/schedule'
+import type { AgentPush, LoopInput, LoopMeta } from '../shared/types'
+import { buildCadence, computeNextRun } from '../shared/schedule'
 import type { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 
 const TICK_MS = 30_000
 
-export { buildCadence }
-
-/** Next fire time strictly after `from`. */
-export function computeNextRun(type: LoopType, config: LoopConfig, from: number): number {
-  if (type === 'interval') {
-    return from + intervalMinutes(config) * 60_000
-  }
-  const [hh, mm] = (config.time ?? '09:00').split(':').map((n) => parseInt(n, 10))
-  const next = new Date(from)
-  next.setHours(hh, mm, 0, 0)
-  if (type === 'daily') {
-    if (next.getTime() <= from) next.setDate(next.getDate() + 1)
-    return next.getTime()
-  }
-  // weekly — config days 0 = Monday … 6 = Sunday; JS getDay(): 0 = Sunday.
-  // Advance day-by-day to the soonest future time matching any selected weekday.
-  const targetDows = new Set(weekdays(config).map((d) => (d + 1) % 7))
-  while (!targetDows.has(next.getDay()) || next.getTime() <= from) {
-    next.setDate(next.getDate() + 1)
-    next.setHours(hh, mm, 0, 0)
-  }
-  return next.getTime()
-}
+// computeNextRun lives in the (pure, db-free) shared schedule module so it can
+// be unit-tested without pulling in the native db/electron deps. Re-exported
+// here for existing importers.
+export { buildCadence, computeNextRun }
 
 export class LoopScheduler {
   private timer: NodeJS.Timeout | null = null
