@@ -179,6 +179,7 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
                 agent={a}
                 active={agentId === a.id}
                 onClick={() => navigate(`/project/${project.id}/agent/${a.id}`)}
+                onDiscard={() => handleDiscard(a)}
               />
             ))}
           </>
