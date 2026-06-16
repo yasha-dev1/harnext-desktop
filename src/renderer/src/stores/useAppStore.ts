@@ -76,6 +76,8 @@ interface AppStore {
   recallSteer: (agentId: string) => Promise<string | null>
   abortAgent: (agentId: string) => Promise<void>
   discardAgent: (agentId: string) => Promise<void>
+  /** Rename a conversation (#115); updates the store so the UI reflects it live. */
+  renameAgent: (agentId: string, title: string) => Promise<void>
   mergeAgent: (agentId: string) => Promise<void>
   ensureTimeline: (agentId: string) => Promise<void>
   loadDiff: (agentId: string) => Promise<void>
@@ -323,6 +325,15 @@ export const useAppStore = create<AppStore>((set, get) => {
       const agent = get().agents[agentId]
       await window.api.agents.discard(agentId)
       if (agent) await get().loadAgents(agent.projectId)
+    },
+
+    renameAgent: async (agentId, title) => {
+      const t = title.trim()
+      const agent = get().agents[agentId]
+      if (!t || !agent || t === agent.title) return
+      await window.api.agents.rename(agentId, t)
+      // Update locally so the sidebar + header reflect it immediately.
+      set((state) => ({ agents: { ...state.agents, [agentId]: { ...agent, title: t } } }))
     },
 
     mergeAgent: async (agentId) => {

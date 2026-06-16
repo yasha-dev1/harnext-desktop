@@ -982,6 +982,64 @@ function SplitView({
   )
 }
 
+/** The conversation title, editable in place (#115): pencil / double-click to
+ *  edit, Enter or blur to save, Esc to cancel. */
+function EditableTitle({
+  title,
+  onRename
+}: {
+  title: string
+  onRename: (t: string) => void
+}): JSX.Element {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(title)
+  // Re-sync the draft when the title changes externally (adjust-on-render).
+  const [lastTitle, setLastTitle] = useState(title)
+  if (title !== lastTitle) {
+    setLastTitle(title)
+    setDraft(title)
+  }
+  const save = (): void => {
+    onRename(draft)
+    setEditing(false)
+  }
+  if (editing) {
+    return (
+      <input
+        className="detail-title detail-title-edit"
+        value={draft}
+        autoFocus
+        spellCheck={false}
+        aria-label="Conversation title"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            save()
+          } else if (e.key === 'Escape') {
+            setDraft(title)
+            setEditing(false)
+          }
+        }}
+      />
+    )
+  }
+  return (
+    <div className="detail-title" onDoubleClick={() => setEditing(true)}>
+      <span className="detail-title-text">{title}</span>
+      <button
+        className="detail-title-pencil"
+        title="Rename conversation"
+        aria-label="Rename conversation"
+        onClick={() => setEditing(true)}
+      >
+        <Icon.edit size={14} />
+      </button>
+    </div>
+  )
+}
+
 // ── page ─────────────────────────────────────────────────────────────
 
 export default function AgentDetail(): JSX.Element {
@@ -1002,6 +1060,7 @@ export default function AgentDetail(): JSX.Element {
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const renameAgent = useAppStore((s) => s.renameAgent)
 
   // Reset per-agent UI state when navigating between agents.
   const [lastAgentId, setLastAgentId] = useState(agentId)
@@ -1050,7 +1109,7 @@ export default function AgentDetail(): JSX.Element {
             <span className="sep">/</span>
             <span>{project.name}</span>
           </div>
-          <div className="detail-title">{agent.title}</div>
+          <EditableTitle title={agent.title} onRename={(t) => void renameAgent(agent.id, t)} />
           <div className="detail-tags">
             <StatusPill status={agent.status} />
             {agent.branch && (

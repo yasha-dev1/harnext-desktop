@@ -85,6 +85,7 @@ const api: DesktopApi = {
     openPR: (agentId: string, opts: { base?: string; title?: string; body?: string }) =>
       ipcRenderer.invoke('agents:openPR', agentId, opts),
     discard: (agentId: string) => ipcRenderer.invoke('agents:discard', agentId),
+    rename: (agentId: string, title: string) => ipcRenderer.invoke('agents:rename', agentId, title),
     openEditor: (agentId: string) => ipcRenderer.invoke('agents:openEditor', agentId),
     stopAll: () => ipcRenderer.invoke('agents:stopAll'),
     sandbox: (agentId: string) => ipcRenderer.invoke('agents:sandbox', agentId)

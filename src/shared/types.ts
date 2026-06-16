@@ -482,6 +482,8 @@ export interface DesktopApi {
     suggestPR(agentId: string): Promise<{ title: string; base: string; body: string }>
     openPR(agentId: string, opts: { base?: string; title?: string; body?: string }): Promise<string>
     discard(agentId: string): Promise<void>
+    /** Rename a conversation (#115). */
+    rename(agentId: string, title: string): Promise<void>
     openEditor(agentId: string): Promise<void>
     stopAll(): Promise<void>
     /** Current Docker sandbox state for an agent (forwarded ports, status). */

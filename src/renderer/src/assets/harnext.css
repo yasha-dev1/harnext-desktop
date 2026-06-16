@@ -1154,6 +1154,42 @@ html[data-density='compact'] .body {
   letter-spacing: -0.5px;
   line-height: 1.35;
   margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* Rename affordance (#115): pencil revealed on hover; click or double-click to edit. */
+.detail-title-pencil {
+  flex: none;
+  display: inline-flex;
+  color: var(--tx-3);
+  padding: 3px;
+  border-radius: 6px;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    background 0.12s;
+}
+.detail-title:hover .detail-title-pencil {
+  opacity: 1;
+}
+.detail-title-pencil:hover {
+  color: var(--tx-0);
+  background: var(--bg-2);
+}
+.detail-title-edit {
+  width: 100%;
+  margin-bottom: 9px;
+  background: var(--bg-0);
+  border: 1px solid var(--p-text);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: var(--tx-0);
+  /* inherit the title typography */
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
 }
 .detail-tags {
   display: flex;

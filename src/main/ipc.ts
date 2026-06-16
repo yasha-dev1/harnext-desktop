@@ -290,6 +290,9 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       manager.openPullRequest(agentId, opts)
   )
   ipcMain.handle('agents:discard', (_e, agentId: string) => manager.discard(agentId))
+  ipcMain.handle('agents:rename', (_e, agentId: string, title: string) =>
+    db.renameAgent(agentId, title)
+  )
   ipcMain.handle('agents:openEditor', async (_e, agentId: string) => {
     const meta = db.getAgent(agentId, manager.isLive(agentId))
     if (!meta) throw new Error('Agent not found')
