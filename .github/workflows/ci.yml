@@ -38,5 +38,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Catch source formatting drift before it lands (a named gap in #138).
+      - name: Format check
+        run: npm run format:check
+
       - name: Unit tests + coverage
         run: npm run test:coverage
