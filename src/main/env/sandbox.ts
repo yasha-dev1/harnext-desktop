@@ -12,6 +12,44 @@ const pExecFile = promisify(execFile)
 /** How long `up --wait` may take for services to become healthy. */
 const HEALTH_TIMEOUT_SEC = 180
 
+/** An Error tagged so callers can recognise an abort (mirrors AbortError). */
+export function abortError(): Error {
+  return Object.assign(new Error('Aborted'), { name: 'AbortError' })
+}
+
+/**
+ * `setTimeout` as a promise that rejects immediately if `signal` is (or becomes)
+ * aborted — so a long readiness poll can be cancelled the moment Stop is pressed
+ * during "Preparing environment" (#126).
+ */
+export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError())
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(abortError())
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/** Container state probe — injectable so the readiness poll is unit-testable. */
+export type InspectState = (container: string) => Promise<{ status?: string; health?: string }>
+
+const dockerInspectState: InspectState = async (container) => {
+  const insp = await pExecFile('docker', ['inspect', container])
+  const info = (
+    JSON.parse(insp.stdout) as Array<{
+      State?: { Status?: string; Health?: { Status?: string } }
+    }>
+  )[0]
+  return { status: info?.State?.Status, health: info?.State?.Health?.Status }
+}
+
 export interface SandboxHandle {
   /** `docker compose` project name — namespaces containers/networks/volumes per worktree. */
   projectName: string
@@ -76,24 +114,30 @@ export function buildOverride(env: ProjectEnvConfig, hostPorts: Record<string, n
  * in the project exits — even cleanly (exit 0) — which one-shot/short-lived
  * services (build, warmup, one-off workers) do by design.
  */
-async function waitForContainerReady(
+export interface ReadyOpts {
+  /** Abort the poll promptly when the agent's bootstrap is cancelled (#126). */
+  signal?: AbortSignal
+  /** Container-state probe (default: `docker inspect`); injectable for tests. */
+  inspect?: InspectState
+  /** Inter-poll delay (default: abortableDelay); injectable for tests. */
+  delay?: (ms: number, signal?: AbortSignal) => Promise<void>
+}
+
+export async function waitForContainerReady(
   container: string,
   service: string,
-  timeoutMs: number
+  timeoutMs: number,
+  opts: ReadyOpts = {}
 ): Promise<void> {
+  const inspect = opts.inspect ?? dockerInspectState
+  const delay = opts.delay ?? abortableDelay
   const deadline = Date.now() + timeoutMs
   for (;;) {
+    if (opts.signal?.aborted) throw abortError()
     let status: string | undefined
     let health: string | undefined
     try {
-      const insp = await pExecFile('docker', ['inspect', container])
-      const info = (
-        JSON.parse(insp.stdout) as Array<{
-          State?: { Status?: string; Health?: { Status?: string } }
-        }>
-      )[0]
-      status = info?.State?.Status
-      health = info?.State?.Health?.Status
+      ;({ status, health } = await inspect(container))
     } catch {
       /* not inspectable yet — retry until the deadline */
     }
@@ -107,7 +151,7 @@ async function waitForContainerReady(
           (health ? ` (health: ${health})` : '')
       )
     }
-    await new Promise((r) => setTimeout(r, 1500))
+    await delay(1500, opts.signal)
   }
 }
 
@@ -128,7 +172,9 @@ export async function bootstrapSandbox(
    * `--env-file`, and `content` is written OUTSIDE the worktree so it can't be
    * committed.
    */
-  envFile?: { path?: string; content?: string }
+  envFile?: { path?: string; content?: string },
+  /** Cancels the (often multi-minute) bootstrap when Stop is pressed (#126). */
+  signal?: AbortSignal
 ): Promise<SandboxHandle> {
   if (!env.workspaceService) {
     throw new Error('Sandbox is enabled but no workspace service was detected in the compose file.')
@@ -194,9 +240,13 @@ export async function bootstrapSandbox(
     // (build, warmup, one-off workers) that exit by design. `up -d` still honours
     // depends_on ordering (incl. service_completed_successfully), so the
     // workspace only starts once its own dependencies are ready.
+    if (signal?.aborted) throw abortError()
+    // `{ signal }` kills the in-flight `compose up --build` child if Stop is
+    // pressed, so a long build/pull doesn't have to finish first (#126).
     await pExecFile('docker', [...composeArgs, 'up', '-d', '--build'], {
       timeout: (timeoutSec + 60) * 1000,
-      maxBuffer: 32 * 1024 * 1024
+      maxBuffer: 32 * 1024 * 1024,
+      signal
     })
 
     const psq = await pExecFile('docker', [...composeArgs, 'ps', '-q', env.workspaceService])
@@ -205,7 +255,7 @@ export async function bootstrapSandbox(
 
     // Gate readiness on the workspace container (where the agent execs) instead
     // of the whole stack, so an unrelated service exiting can't fail the sandbox.
-    await waitForContainerReady(container, env.workspaceService, timeoutSec * 1000)
+    await waitForContainerReady(container, env.workspaceService, timeoutSec * 1000, { signal })
 
     // execCwd = where the worktree is mounted in the container (so the agent's
     // shell lands on the source). Prefer the bind mount's destination, then the

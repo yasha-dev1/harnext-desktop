@@ -293,6 +293,8 @@ interface LiveAgent {
   flushTimer: NodeJS.Timeout | null
   diffTimer: NodeJS.Timeout | null
   abortRequested: boolean
+  /** Cancels a long sandbox bootstrap (which has no live session yet) on Stop (#126). */
+  abortController: AbortController
   lastStopReason: string | null
   lastErrorMessage: string | null
   lastAssistantText: string
@@ -430,6 +432,7 @@ export class AgentManager {
       flushTimer: null,
       diffTimer: null,
       abortRequested: false,
+      abortController: new AbortController(),
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
@@ -477,7 +480,8 @@ export class AgentManager {
         env,
         agent.worktreePath,
         name,
-        resolveSandboxEnvFile(project)
+        resolveSandboxEnvFile(project),
+        agent.abortController.signal
       )
       agent.sandbox = handle
       agent.executor = new DockerExecutor(handle.container, handle.teardown)
@@ -610,6 +614,7 @@ export class AgentManager {
       flushTimer: null,
       diffTimer: null,
       abortRequested: false,
+      abortController: new AbortController(),
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
@@ -654,6 +659,9 @@ export class AgentManager {
     const agent = this.live.get(agentId)
     if (!agent) return
     agent.abortRequested = true
+    // Cancels an in-flight sandbox bootstrap (no live session yet) so Stop works
+    // during "Preparing environment", not only once the LLM session exists (#126).
+    agent.abortController.abort()
     for (const s of agent.sessions) s.abort()
   }
 
