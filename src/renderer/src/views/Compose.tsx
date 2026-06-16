@@ -8,6 +8,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
+import { imagesWouldBeDropped, NON_VISION_ATTACH_HINT } from '../lib/vision-models'
 import { projectDraftKey } from '../lib/draft-keys'
 import { navigateHistory, caretAtEdge } from '../lib/composer-history'
 
@@ -74,6 +75,10 @@ export default function Compose(): JSX.Element {
   const curated = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
   const models = providerModels[settings.provider] ?? curated
   const isGoal = /(^|\s)\/goal\b/i.test(text)
+  // Warn when the model that will receive the prompt can't read images, so an
+  // attachment isn't silently dropped (#131). In goal mode the planner (smart)
+  // gets the first prompt; otherwise it's the single model.
+  const nonVisionModel = imagesWouldBeDropped(isGoal ? settings.smart : settings.model)
 
   // Base-branch picker: default to the project's current branch; the options are
   // the fetched local + remote branches (current first), deduped.
@@ -152,7 +157,10 @@ export default function Compose(): JSX.Element {
             autoFocus
           />
           <div className="composer-bar">
-            <AttachButton onPick={att.addFiles} />
+            <AttachButton
+              onPick={att.addFiles}
+              title={nonVisionModel ? NON_VISION_ATTACH_HINT : undefined}
+            />
             <span className="ctl-sel">
               <select
                 value={settings.mode}
@@ -239,6 +247,21 @@ export default function Compose(): JSX.Element {
             style={{ marginTop: 14, padding: '12px 16px', fontSize: 12, color: 'var(--err)' }}
           >
             {error || att.error}
+          </div>
+        )}
+
+        {nonVisionModel && att.items.length > 0 && (
+          <div
+            className="set-card"
+            role="alert"
+            style={{
+              marginTop: 14,
+              padding: '12px 16px',
+              fontSize: 12,
+              color: 'var(--warn, #e0b341)'
+            }}
+          >
+            ⚠ {NON_VISION_ATTACH_HINT} Your attachment won’t be sent.
           </div>
         )}
 
