@@ -14,6 +14,21 @@ export interface CapturedChange {
 }
 
 /**
+ * Count added/removed lines in a unified diff, excluding the `+++`/`---` file
+ * headers (so they aren't miscounted as one addition + one deletion). This
+ * header exclusion is the precise thing #36 fixed; keep it guarded by a test.
+ */
+export function countDiffLines(diff: string): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+') && !line.startsWith('+++')) additions++
+    else if (line.startsWith('-') && !line.startsWith('---')) deletions++
+  }
+  return { additions, deletions }
+}
+
+/**
  * Edit/Write tool results don't include diffs, so we snapshot the target file
  * when the tool starts and compare when it ends — the same trick the harnext
  * interactive CLI uses.
@@ -39,12 +54,7 @@ export class DiffTracker {
     if (after === snap.before) return null
 
     const diff = createTwoFilesPatch(snap.path, snap.path, snap.before ?? '', after ?? '', '', '')
-    let additions = 0
-    let deletions = 0
-    for (const line of diff.split('\n')) {
-      if (line.startsWith('+') && !line.startsWith('+++')) additions++
-      else if (line.startsWith('-') && !line.startsWith('---')) deletions++
-    }
+    const { additions, deletions } = countDiffLines(diff)
     return {
       path: snap.path,
       beforeContent: snap.before,
