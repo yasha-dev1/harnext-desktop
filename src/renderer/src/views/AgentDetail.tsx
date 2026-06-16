@@ -59,7 +59,28 @@ function roleModelId(agent: AgentMeta, role: Role): string | null {
 function MsgText({ text }: { text: string }): JSX.Element {
   return (
     <div className="msg-text">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Open links in the system browser rather than navigating the app
+          // window away from the conversation (issue #130).
+          a: ({ href, children, ...props }) => (
+            <a
+              {...props}
+              href={href}
+              onClick={(e) => {
+                if (!href) return
+                e.preventDefault()
+                void window.api.openExternal(href)
+              }}
+            >
+              {children}
+            </a>
+          )
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   )
 }
