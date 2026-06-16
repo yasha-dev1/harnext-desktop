@@ -118,7 +118,10 @@ interface RawService {
   healthcheck?: { disable?: boolean }
 }
 
-function parseServices(raw: Record<string, RawService>, projectPath: string): ComposeService[] {
+export function parseServices(
+  raw: Record<string, RawService>,
+  projectPath: string
+): ComposeService[] {
   const root = resolve(projectPath)
   return Object.entries(raw).map(([name, svc]) => {
     // Only published ports (`ports:`) are host-facing forwarding candidates.
@@ -148,7 +151,7 @@ function parseServices(raw: Record<string, RawService>, projectPath: string): Co
 // Services with a published port are forwarded to the host. The primary (what the
 // explorer opens) is the user's pick, else the workspace service's port, else the
 // first exposed service.
-function buildExposed(
+export function buildExposed(
   services: ComposeService[],
   workspace: string | null,
   primaryOverride?: string
@@ -161,6 +164,16 @@ function buildExposed(
   if (idx < 0 && workspace) idx = exposed.findIndex((e) => e.service === workspace)
   exposed[idx >= 0 ? idx : 0].primary = true
   return exposed
+}
+
+/**
+ * Pick the workspace service — the one the agent execs into. An explicit, valid
+ * override wins; otherwise the first service that runs our source (it `build`s an
+ * image, or bind-mounts the project root), else null. Pure + exported for tests.
+ */
+export function pickWorkspaceService(services: ComposeService[], override?: string): string | null {
+  if (override && services.some((s) => s.name === override)) return override
+  return services.find((s) => s.build || s.mountsSource)?.name ?? null
 }
 
 /** A disabled, no-runtime config — the "behaves exactly like today" baseline. */
@@ -245,11 +258,7 @@ export async function detectProjectEnv(
 
   if (services.length === 0) return partial('No services found in the compose file.')
 
-  const wsOverride = overrides.workspaceService
-  const workspaceService =
-    wsOverride && services.some((s) => s.name === wsOverride)
-      ? wsOverride
-      : (services.find((s) => s.build || s.mountsSource)?.name ?? null)
+  const workspaceService = pickWorkspaceService(services, overrides.workspaceService)
   return {
     enabled: true,
     runtime: 'compose',
