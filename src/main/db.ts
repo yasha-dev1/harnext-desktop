@@ -5,6 +5,7 @@ import { join, basename } from 'node:path'
 import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
 import { runMigrations } from './migrations'
+import { mergeStoredSettings } from './settings-merge'
 
 /** A friendly default identity derived from the machine, not hardcoded. */
 function defaultDisplayName(): string {
@@ -284,19 +285,7 @@ export function getSettings(): AppSettings {
     key: string
     value: string
   }[]
-  const stored: Record<string, unknown> = {}
-  for (const r of rows) {
-    try {
-      stored[r.key] = JSON.parse(r.value)
-    } catch {
-      /* skip bad rows */
-    }
-  }
-  const merged = { ...SETTINGS_DEFAULTS, ...stored }
-  // Migrate the removed 'bruh' sound (dropped with its bundled mp3) to the
-  // default so upgraded users aren't left with a silent, unrecognised cue.
-  if (merged.doneSound === 'bruh') merged.doneSound = SETTINGS_DEFAULTS.doneSound
-  return merged
+  return mergeStoredSettings(rows, SETTINGS_DEFAULTS)
 }
 
 export function setSettings(patch: Partial<AppSettings>): AppSettings {
