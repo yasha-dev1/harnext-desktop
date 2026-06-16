@@ -39,6 +39,7 @@ import {
   worktreeDiff
 } from '../git'
 import { DiffTracker } from './diff-service'
+import { describeAgentError } from './error-messages'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
 import { buildEnvFileContent } from '../env/env-file'
@@ -439,7 +440,10 @@ export class AgentManager {
       else await this.runSingle(agent, cleanPrompt, images)
     }
     void run().catch((err: unknown) =>
-      this.settle(agent, err instanceof Error ? err.message : String(err))
+      this.settle(
+        agent,
+        describeAgentError(err, { provider: agent.provider, model: agent.execModel })
+      )
     )
 
     return db.getAgent(agentId, true)!
@@ -537,7 +541,12 @@ export class AgentManager {
     void session
       .prompt(text, images)
       .then(() => this.settle(agent))
-      .catch((err: unknown) => this.settle(agent, err instanceof Error ? err.message : String(err)))
+      .catch((err: unknown) =>
+        this.settle(
+          agent,
+          describeAgentError(err, { provider: agent.provider, model: agent.execModel })
+        )
+      )
   }
 
   /**
@@ -620,7 +629,7 @@ export class AgentManager {
         agentId,
         'failed',
         'Resume failed',
-        err instanceof Error ? err.message : String(err)
+        describeAgentError(err, { provider: agent.provider, model: agent.execModel })
       )
       this.send({ agentId, type: 'agents-changed', projectId: meta.projectId })
       throw err
