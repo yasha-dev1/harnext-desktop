@@ -30,6 +30,22 @@ Before opening the PR, verify:
 - All intended changes are committed; `git status` is clean.
 - The branch is pushed: `git push -u origin HEAD`.
 
+**Pre-flight verification gate (run BEFORE `gh pr create`) — #157.** This skill
+owns the PR standard, so it must not open a PR that fails the checks. Run:
+
+```bash
+bash .claude/skills/pr-ready-sound/preflight.sh
+```
+
+It runs lint · format check · **full typecheck** · unit tests and exits non-zero
+on the first failure, naming the step. **Do not open the PR if it fails** — fix
+the issue and re-run. (For a deliberate, explained override, set
+`PREFLIGHT_SKIP="<Step>"`, e.g. when a check is irrelevant to a docs-only change.)
+Populate the PR body's `## Testing` section from what actually ran — not a
+hand-written claim. The gate is stronger than CI for type errors: CI can't fully
+typecheck the main process (it needs `@harnext/core`'s real types, stubbed on CI
+— #16/#138), but the gate can, locally.
+
 Then create the PR with a clear title and a structured body:
 
 ```bash
