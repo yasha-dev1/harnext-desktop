@@ -1,6 +1,6 @@
 {
   "name": "harnext-desktop",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Desktop interface for the harnext AI coding agent",
   "type": "module",
   "main": "./out/main/index.js",
