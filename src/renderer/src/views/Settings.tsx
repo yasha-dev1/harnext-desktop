@@ -20,6 +20,7 @@ import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
 import McpSettings from '../components/McpSettings'
 import EnvSecrets from '../components/EnvSecrets'
+import { UpdatesCard } from '../components/UpdatesCard'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
 
@@ -910,6 +911,8 @@ function GeneralTab({
           </span>
         </Row>
       </div>
+
+      <UpdatesCard />
 
       <div className="set-card danger">
         <div className="set-card-head">
