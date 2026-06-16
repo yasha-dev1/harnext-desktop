@@ -46,6 +46,7 @@ import {
   PLANNER_SYSTEM_PROMPT,
   withWorkingDir
 } from './goal-prompts'
+import { READ_ONLY_BASH } from './goal-policy'
 
 type AgentEvent = Parameters<AgentSessionEventListener>[0]
 
@@ -77,19 +78,6 @@ export function ensureProviderEnv(providerId: string): void {
 const TEXT_FLUSH_MS = 50
 const DIFF_DEBOUNCE_MS = 900
 const RESULT_PREVIEW_CHARS = 4000
-
-/**
- * Permission policy for the goal-mode planner/evaluator (#109). They need a
- * read-only shell — `git status`/`git diff`, `ls`, `cat`, `curl` — to inspect
- * the repo and review the diff. `plan` mode blocks `bash` entirely (it's
- * classified as mutating), contradicting their prompts. Instead run under
- * `acceptEdits` with `write`/`edit` hidden and blocked: shell works, the
- * working tree can't be edited. The role prompts already forbid mutation.
- */
-const READ_ONLY_BASH = {
-  permissionMode: 'acceptEdits' as const,
-  disallowedTools: ['write', 'edit'] as const
-}
 
 const ZERO_USAGE = {
   input: 0,
