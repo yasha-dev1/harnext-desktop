@@ -8,6 +8,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
+import { projectDraftKey } from '../lib/draft-keys'
 
 const QUICK: { ic: IconName; t: string }[] = [
   { ic: 'bolt', t: 'Fix the failing tests' },
@@ -29,7 +30,12 @@ export default function Compose(): JSX.Element {
   const providerModels = useAppStore((s) => s.providerModels)
   const loadProviderModels = useAppStore((s) => s.loadProviderModels)
 
-  const [text, setText] = useState('')
+  // Draft persists across navigation (#132): keyed per project in the store.
+  const draftKey = projectDraftKey(projectId)
+  const text = useAppStore((s) => s.composerDrafts[draftKey] ?? '')
+  const setDraft = useAppStore((s) => s.setDraft)
+  const clearDraft = useAppStore((s) => s.clearDraft)
+  const setText = (v: string): void => setDraft(draftKey, v)
   const [starting, setStarting] = useState(false)
   const att = useAttachments()
   const [error, setError] = useState<string | null>(null)
@@ -78,7 +84,7 @@ export default function Compose(): JSX.Element {
       // Only override when the user picked a branch other than the current one.
       const baseBranch = baseValue && baseValue !== currentBranch ? baseValue : undefined
       const meta = await startAgent({ projectId, prompt: text.trim(), images, baseBranch })
-      setText('')
+      clearDraft(draftKey)
       att.clear()
       navigate(`/project/${projectId}/agent/${meta.id}`)
     } catch (err) {

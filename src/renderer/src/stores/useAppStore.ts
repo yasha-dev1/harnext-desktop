@@ -45,6 +45,15 @@ interface AppStore {
   /** Live model catalog per provider id, fetched lazily and cached. */
   providerModels: Record<string, string[]>
 
+  /**
+   * Unsent composer text, keyed so it survives route changes (#132): the
+   * new-agent Compose box is keyed `project:<id>`, each conversation's
+   * follow-up box `agent:<id>`. Cleared on successful send.
+   */
+  composerDrafts: Record<string, string>
+  setDraft: (key: string, text: string) => void
+  clearDraft: (key: string) => void
+
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
   loadProviderModels: (providerId: string) => Promise<void>
@@ -203,6 +212,16 @@ export const useAppStore = create<AppStore>((set, get) => {
     undeliveredSteers: {},
     loopsByProject: {},
     loopRuns: {},
+    composerDrafts: {},
+
+    setDraft: (key, text) => set((s) => ({ composerDrafts: { ...s.composerDrafts, [key]: text } })),
+    clearDraft: (key) =>
+      set((s) => {
+        if (!(key in s.composerDrafts)) return {}
+        const next = { ...s.composerDrafts }
+        delete next[key]
+        return { composerDrafts: next }
+      }),
 
     loadSettings: async () => {
       const settings = await window.api.settings.get()
