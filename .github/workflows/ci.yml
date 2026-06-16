@@ -16,9 +16,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    # The stub/install steps below use POSIX shell (`printf`, `mkdir -p`); bash is
-    # the default on ubuntu/macos and keeps the door open for a Windows runner.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # The stub/install steps below use POSIX shell (`printf`, `mkdir -p`); `bash`
+    # routes them through Git Bash on the Windows runner too. LF is enforced via
+    # .gitattributes so `prettier --check` doesn't trip over CRLF checkouts.
     defaults:
       run:
         shell: bash

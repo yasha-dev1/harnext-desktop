@@ -1,0 +1,19 @@
+# Normalize all text files to LF in the repo and on checkout, regardless of the
+# contributor's OS. Without this, a Windows checkout (autocrlf) rewrites files to
+# CRLF, which makes `prettier --check` fail in CI — the blocker for running the
+# suite on a Windows runner (#138).
+* text=auto eol=lf
+
+# Binary assets must never be line-ending-normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.mp3 binary
+*.mp4 binary
+*.webm binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
