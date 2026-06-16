@@ -1,6 +1,6 @@
 {
   "name": "harnext-desktop",
-  "version": "0.1.0",
+  "version": "0.1.16",
   "description": "Desktop interface for the harnext AI coding agent",
   "type": "module",
   "main": "./out/main/index.js",
@@ -8,6 +8,7 @@
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
@@ -39,6 +40,9 @@
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
@@ -52,6 +56,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
+    "jsdom": "^29.1.1",
     "prettier": "^3.7.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

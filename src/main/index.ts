@@ -6,6 +6,7 @@ import { AgentManager } from './agents/agent-manager'
 import { initDb } from './db'
 import { registerIpc } from './ipc'
 import { LoopScheduler } from './loops'
+import { createNavigationHandler } from './navigation'
 import icon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -47,6 +48,15 @@ function createWindow(): void {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
+
+  // Stop external links (e.g. a bare `<a href>` in conversation markdown) from
+  // replacing the whole app window — divert them to the system browser instead.
+  const navigate = createNavigationHandler({
+    env: { isDev: is.dev, rendererUrl: process.env['ELECTRON_RENDERER_URL'] },
+    openExternal: (url) => void shell.openExternal(url)
+  })
+  mainWindow.webContents.on('will-navigate', navigate)
+  mainWindow.webContents.on('will-redirect', navigate)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

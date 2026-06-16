@@ -15,6 +15,28 @@ export function weekdays(c: LoopConfig): number[] {
   return c.day != null ? [c.day] : [0]
 }
 
+/** Next fire time strictly after `from`. Pure/deterministic given `from`. */
+export function computeNextRun(type: LoopType, config: LoopConfig, from: number): number {
+  if (type === 'interval') {
+    return from + intervalMinutes(config) * 60_000
+  }
+  const [hh, mm] = (config.time ?? '09:00').split(':').map((n) => parseInt(n, 10))
+  const next = new Date(from)
+  next.setHours(hh, mm, 0, 0)
+  if (type === 'daily') {
+    if (next.getTime() <= from) next.setDate(next.getDate() + 1)
+    return next.getTime()
+  }
+  // weekly — config days 0 = Monday … 6 = Sunday; JS getDay(): 0 = Sunday.
+  // Advance day-by-day to the soonest future time matching any selected weekday.
+  const targetDows = new Set(weekdays(config).map((d) => (d + 1) % 7))
+  while (!targetDows.has(next.getDay()) || next.getTime() <= from) {
+    next.setDate(next.getDate() + 1)
+    next.setHours(hh, mm, 0, 0)
+  }
+  return next.getTime()
+}
+
 function formatInterval(mins: number): string {
   if (mins % 60 === 0) {
     const h = mins / 60

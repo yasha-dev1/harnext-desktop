@@ -1,8 +1,10 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
+import { copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
+import { runMigrations } from './migrations'
 
 /** A friendly default identity derived from the machine, not hardcoded. */
 function defaultDisplayName(): string {
@@ -192,6 +194,17 @@ const MIGRATIONS = [
   `
   ALTER TABLE projects ADD COLUMN active_worktree_path TEXT;
   ALTER TABLE projects ADD COLUMN active_branch TEXT;
+  `,
+  // v6 — per-project encrypted secret store (#123). Values are safeStorage
+  // ciphertext (base64); the column never holds a plaintext secret.
+  `
+  CREATE TABLE project_secrets (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key        TEXT NOT NULL,
+    value_enc  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, key)
+  );
   `
 ]
 
@@ -201,12 +214,33 @@ export function initDb(): void {
   db.pragma('foreign_keys = ON')
 
   const version = db.pragma('user_version', { simple: true }) as number
-  for (let i = version; i < MIGRATIONS.length; i++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[i])
-      db.pragma(`user_version = ${i + 1}`)
-    })()
-  }
+  const dbPath = join(app.getPath('userData'), 'harnext.db')
+  runMigrations({
+    version,
+    count: MIGRATIONS.length,
+    apply: (i) =>
+      db.transaction(() => {
+        db.exec(MIGRATIONS[i])
+        db.pragma(`user_version = ${i + 1}`)
+      })(),
+    // Back up an existing DB once before applying any migration, so a failed
+    // post-update migration is recoverable (#162). A fresh DB (v0) has nothing
+    // to lose, so skip it.
+    backup:
+      version > 0
+        ? () => {
+            try {
+              copyFileSync(dbPath, `${dbPath}.bak`)
+            } catch {
+              /* best-effort — never block startup on the backup */
+            }
+          }
+        : undefined,
+    onDowngrade: (dbv, appv) =>
+      console.warn(
+        `[db] schema v${dbv} is newer than this build (v${appv}); skipping migrations to avoid corruption`
+      )
+  })
 
   // A loop run's placeholder ('review' / "Running…") is reconciled to its real
   // outcome by an in-memory onSettled callback that doesn't survive a restart.
@@ -380,6 +414,27 @@ export function removeProject(id: number): void {
   db.prepare('DELETE FROM projects WHERE id = ?').run(id)
 }
 
+// ── project secrets (encrypted; see env/secrets.ts) ──────────────────
+// Storage only — these store/return ciphertext. Encryption lives in
+// env/secrets.ts so the plaintext never reaches the DB layer.
+
+export function upsertSecret(projectId: number, key: string, valueEnc: string): void {
+  db.prepare(
+    `INSERT INTO project_secrets (project_id, key, value_enc, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(project_id, key) DO UPDATE SET value_enc = excluded.value_enc`
+  ).run(projectId, key, valueEnc, Date.now())
+}
+
+export function listSecretRows(projectId: number): { key: string; value_enc: string }[] {
+  return db
+    .prepare('SELECT key, value_enc FROM project_secrets WHERE project_id = ? ORDER BY key')
+    .all(projectId) as { key: string; value_enc: string }[]
+}
+
+export function deleteSecret(projectId: number, key: string): void {
+  db.prepare('DELETE FROM project_secrets WHERE project_id = ? AND key = ?').run(projectId, key)
+}
+
 // ── agents ───────────────────────────────────────────────────────────
 
 interface AgentRow {
@@ -489,6 +544,13 @@ export function updateAgentProgress(id: string, progress: string): void {
 
 export function updateAgentDiffStat(id: string, add: number, del: number): void {
   db.prepare('UPDATE agents SET additions = ?, deletions = ? WHERE id = ?').run(add, del, id)
+}
+
+/** Rename a conversation (#115). Trims; ignores an empty title. */
+export function renameAgent(id: string, title: string): void {
+  const t = title.trim()
+  if (!t) return
+  db.prepare('UPDATE agents SET title = ?, updated_at = ? WHERE id = ?').run(t, Date.now(), id)
 }
 
 export function removeAgent(id: string): void {

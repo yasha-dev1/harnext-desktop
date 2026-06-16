@@ -5,6 +5,7 @@ import type { LoopConfig, LoopType, ProviderOption } from '@shared/types'
 import { buildCadence, DAY_SHORT } from '@shared/schedule'
 import { useAppStore } from '../stores/useAppStore'
 import { shortModel } from '../lib/ui'
+import { buildProviderOptions } from '../lib/provider-options'
 import { Icon } from '../components/icons'
 
 // Initial interval amount + unit, derived from a stored config (honours legacy hours).
@@ -64,7 +65,9 @@ export default function NewLoopForm(): JSX.Element {
   const provider = config.provider ?? settings?.provider ?? ''
   const model = config.model ?? settings?.model ?? ''
   const selProvider = providers.find((p) => p.id === provider)
-  const authProviders = providers.filter((p) => p.authenticated)
+  // Always include the resolved provider as an option so the controlled select
+  // can't silently desync from state when the default provider isn't authed (#141).
+  const providerOptions = buildProviderOptions(providers, provider)
   const modelBase = selProvider?.models ?? []
   const modelOptions = model && !modelBase.includes(model) ? [model, ...modelBase] : modelBase
 
@@ -264,12 +267,12 @@ export default function NewLoopForm(): JSX.Element {
                     set({ provider: e.target.value, model: next?.defaultModel })
                   }}
                 >
-                  {authProviders.length === 0 && (
+                  {providerOptions.length === 0 && (
                     <option value={provider}>{provider || '—'}</option>
                   )}
-                  {authProviders.map((p) => (
+                  {providerOptions.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}
+                      {p.label}
                     </option>
                   ))}
                 </select>

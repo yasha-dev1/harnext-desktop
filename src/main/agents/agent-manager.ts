@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import {
   createAgentSession,
   getProviderById,
@@ -34,11 +36,17 @@ import {
   mergeWorktree,
   pushBranch,
   removeWorktree,
+  resolveBaseRef,
   worktreeDiff
 } from '../git'
 import { DiffTracker } from './diff-service'
+import { describeAgentError } from './error-messages'
+import { isExitPlanTool, exitPlanArg, plannerProducedPlan } from './goal-plan'
+import { parsePrepNames, fallbackBranchFromPrompt, type PrepNames } from './prep-names'
 import { DockerExecutor } from '../env/docker-executor'
 import { bootstrapSandbox, sandboxProjectName, type SandboxHandle } from '../env/sandbox'
+import { buildEnvFileContent } from '../env/env-file'
+import { resolveProjectSecrets } from '../env/secrets'
 import {
   EVALUATOR_SYSTEM_PROMPT,
   GENERATOR_SYSTEM_PROMPT,
@@ -121,32 +129,32 @@ function buildInitialMessages(
   return out
 }
 
-const WORKTREE_NAME_PROMPT =
-  'You name git branches for coding tasks. Reply with ONLY the branch name: ' +
-  '2-4 lowercase words in kebab-case (hyphen-separated). No "agent/" or ' +
-  '"feature/" prefix, no quotes, no punctuation, no explanation. ' +
-  'Examples: add-csv-export, fix-login-redirect, refactor-auth-context.'
+const PREP_NAMES_PROMPT =
+  'You name a new coding task for a UI. Given the task, reply with EXACTLY two ' +
+  'lines and nothing else:\n' +
+  'Title: <a concise human title, 3-8 words, Title Case, no trailing period>\n' +
+  'Branch: <2-4 lowercase kebab-case words, no agent/ or feature/ prefix>\n' +
+  'Examples:\nTitle: Add CSV Export to Reports\nBranch: add-csv-export'
 
-const WORKTREE_NAME_TIMEOUT_MS = 15_000
+const PREP_NAMES_TIMEOUT_MS = 15_000
 
 /**
- * Ask the model for a concise branch name for the task instead of slugifying
- * the raw prompt. Best-effort: returns null on any error/timeout so worktree
- * creation can fall back to the prompt-derived slug. Runs a minimal, tool-less
- * single-turn session so it's cheap and fast.
+ * Ask the model for a concise conversation title + branch name in one cheap,
+ * tool-less single-turn call (#114). Best-effort: returns null on any
+ * error/timeout so the caller falls back to the prompt-derived title/slug.
  */
-async function generateWorktreeName(
+async function generatePrepDetails(
   provider: string,
   modelId: string,
   cwd: string,
   prompt: string
-): Promise<string | null> {
+): Promise<PrepNames | null> {
   try {
     const { session } = await createAgentSession({
       cwd,
       provider,
       modelId,
-      systemPrompt: WORKTREE_NAME_PROMPT,
+      systemPrompt: PREP_NAMES_PROMPT,
       tools: [],
       skills: [],
       mcpDisabled: true,
@@ -161,7 +169,7 @@ async function generateWorktreeName(
       }
     })
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('worktree-name timeout')), WORKTREE_NAME_TIMEOUT_MS)
+      setTimeout(() => reject(new Error('prep-names timeout')), PREP_NAMES_TIMEOUT_MS)
     )
     try {
       await Promise.race([session.prompt(`Task:\n${prompt.slice(0, 1500)}`), timeout])
@@ -169,12 +177,7 @@ async function generateWorktreeName(
       unsubscribe()
       void session.dispose()
     }
-    const name = out
-      .trim()
-      .split('\n')[0]
-      .replace(/^(agent|feature|feat)\//i, '')
-      .trim()
-    return name || null
+    return out.trim() ? parsePrepNames(out) : null
   } catch {
     return null
   }
@@ -287,10 +290,48 @@ interface LiveAgent {
   flushTimer: NodeJS.Timeout | null
   diffTimer: NodeJS.Timeout | null
   abortRequested: boolean
+  /** Cancels a long sandbox bootstrap (which has no live session yet) on Stop (#126). */
+  abortController: AbortController
   lastStopReason: string | null
   lastErrorMessage: string | null
   lastAssistantText: string
+  // Goal mode: set when the planner presents a plan via `exit_plan`, with the
+  // plan markdown from the tool's argument. Gates (and supplies) the executor's
+  // blueprint so a blocked planner's question isn't implemented (#110).
+  plannerPresentedPlan: boolean
+  plannerPlan: string
   onSettled?: (info: SettleInfo) => void
+}
+
+/**
+ * Resolve the env-file the sandbox feeds compose (#123): inline secrets (decrypted
+ * here, in the main process) merged over a base env-file. The base is the project's
+ * `envFile` override, or `.env` in the MAIN checkout when present — never the
+ * worktree, which is gitignored and would risk committing the secrets. Returns a
+ * direct `path` when no inline secrets exist (faithful to the user's file), `content`
+ * (a temp file, written outside the worktree) when they do, or undefined for neither.
+ */
+function resolveSandboxEnvFile(project: Project): { path?: string; content?: string } | undefined {
+  const overrideFile = project.envConfig?.overrides?.envFile
+  const basePath = overrideFile
+    ? isAbsolute(overrideFile)
+      ? overrideFile
+      : join(project.path, overrideFile)
+    : join(project.path, '.env')
+  const hasBase = existsSync(basePath)
+  const secrets = resolveProjectSecrets(project.id)
+
+  if (Object.keys(secrets).length === 0) return hasBase ? { path: basePath } : undefined
+
+  let baseRaw: string | null = null
+  if (hasBase) {
+    try {
+      baseRaw = readFileSync(basePath, 'utf8')
+    } catch {
+      /* unreadable base — fall back to secrets only */
+    }
+  }
+  return { content: buildEnvFileContent(baseRaw, secrets) }
 }
 
 export class AgentManager {
@@ -311,7 +352,7 @@ export class AgentManager {
     const provider = input.provider ?? settings.provider
     const isGoal = /(^|\s)\/goal\b/i.test(input.prompt)
     const cleanPrompt = input.prompt.replace(/(^|\s)\/goal\b/i, ' ').trim() || input.prompt
-    const title = cleanPrompt.replace(/\s+/g, ' ').trim().slice(0, 80)
+    const fallbackTitle = cleanPrompt.replace(/\s+/g, ' ').trim().slice(0, 80)
     const permissionMode = input.permissionMode ?? settings.mode
     const model = input.model ?? settings.model
     const smart = input.smart ?? settings.smart
@@ -322,21 +363,28 @@ export class AgentManager {
 
     const agentId = randomUUID()
 
-    // Isolated worktree for git projects — the user's checkout is never touched.
-    // Ask the model for a meaningful branch name first; fall back to the
-    // prompt-derived title if it can't (offline, bad key, timeout…).
     // The project's working repo — its active branch worktree (#96) or the main
     // checkout. Agent worktrees, the env and merges all happen relative to it.
     const repoCwd = db.projectCwd(project)
+    // One cheap-model call names the conversation: a concise title + branch name
+    // from the first prompt (#114). Best-effort — falls back to the prompt slug.
+    const prep = await generatePrepDetails(provider, model, repoCwd, cleanPrompt)
+    const title = prep?.title || fallbackTitle
+
+    // Isolated worktree for git projects — the user's checkout is never touched.
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
-      const suggested = await generateWorktreeName(provider, model, repoCwd, cleanPrompt)
+      // No explicit base (#97) → branch off freshly-fetched origin/<default> so
+      // agents start from latest upstream main, not a stale local HEAD (#127).
+      const baseRef = resolveBaseRef(repoCwd, input.baseBranch)
       worktree = createWorktree(
         repoCwd,
-        suggested ?? title,
+        // Sanitized fallback (URLs stripped) so a degraded prep call on a
+        // URL-heavy prompt can't yield a `https-github-com-…` branch (#114).
+        prep?.branchName ?? fallbackBranchFromPrompt(cleanPrompt),
         agentId,
         settings.worktreeRoot,
-        input.baseBranch
+        baseRef
       )
     }
     const cwd = worktree?.path ?? repoCwd
@@ -385,9 +433,12 @@ export class AgentManager {
       flushTimer: null,
       diffTimer: null,
       abortRequested: false,
+      abortController: new AbortController(),
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
+      plannerPresentedPlan: false,
+      plannerPlan: '',
       onSettled: hooks?.onSettled
     }
     this.live.set(agentId, agent)
@@ -405,7 +456,10 @@ export class AgentManager {
       else await this.runSingle(agent, cleanPrompt, images)
     }
     void run().catch((err: unknown) =>
-      this.settle(agent, err instanceof Error ? err.message : String(err))
+      this.settle(
+        agent,
+        describeAgentError(err, { provider: agent.provider, model: agent.execModel })
+      )
     )
 
     return db.getAgent(agentId, true)!
@@ -423,7 +477,13 @@ export class AgentManager {
     this.setSandboxStatus(agent, 'preparing')
     try {
       const name = sandboxProjectName(project.path, agent.worktreePath)
-      const handle = await bootstrapSandbox(env, agent.worktreePath, name)
+      const handle = await bootstrapSandbox(
+        env,
+        agent.worktreePath,
+        name,
+        resolveSandboxEnvFile(project),
+        agent.abortController.signal
+      )
       agent.sandbox = handle
       agent.executor = new DockerExecutor(handle.container, handle.teardown)
       agent.execCwd = handle.execCwd
@@ -498,7 +558,12 @@ export class AgentManager {
     void session
       .prompt(text, images)
       .then(() => this.settle(agent))
-      .catch((err: unknown) => this.settle(agent, err instanceof Error ? err.message : String(err)))
+      .catch((err: unknown) =>
+        this.settle(
+          agent,
+          describeAgentError(err, { provider: agent.provider, model: agent.execModel })
+        )
+      )
   }
 
   /**
@@ -550,9 +615,12 @@ export class AgentManager {
       flushTimer: null,
       diffTimer: null,
       abortRequested: false,
+      abortController: new AbortController(),
       lastStopReason: null,
       lastErrorMessage: null,
       lastAssistantText: '',
+      plannerPresentedPlan: false,
+      plannerPlan: '',
       onSettled: undefined
     }
     this.live.set(agentId, agent)
@@ -581,7 +649,7 @@ export class AgentManager {
         agentId,
         'failed',
         'Resume failed',
-        err instanceof Error ? err.message : String(err)
+        describeAgentError(err, { provider: agent.provider, model: agent.execModel })
       )
       this.send({ agentId, type: 'agents-changed', projectId: meta.projectId })
       throw err
@@ -592,6 +660,9 @@ export class AgentManager {
     const agent = this.live.get(agentId)
     if (!agent) return
     agent.abortRequested = true
+    // Cancels an in-flight sandbox bootstrap (no live session yet) so Stop works
+    // during "Preparing environment", not only once the LLM session exists (#126).
+    agent.abortController.abort()
     for (const s of agent.sessions) s.abort()
   }
 
@@ -767,6 +838,8 @@ export class AgentManager {
 
     // 1 — planner (smart model, read-only shell)
     this.setStatus(agent.id, 'running', 'Planning the work')
+    agent.plannerPresentedPlan = false
+    agent.plannerPlan = ''
     const planner = await this.createSession(agent, {
       modelId: agent.smartModel!,
       role: 'plan',
@@ -775,8 +848,17 @@ export class AgentManager {
       mcpDisabled: true
     })
     await planner.prompt(goal, images)
-    const blueprint = agent.lastAssistantText
-    if (agent.abortRequested || !blueprint) {
+    // The blueprint is the plan the planner presented via exit_plan; fall back
+    // to its final message if the tool arg was empty.
+    const blueprint = agent.plannerPlan || agent.lastAssistantText
+    if (agent.abortRequested) {
+      this.settle(agent)
+      return
+    }
+    // Only hand off to the executor when the planner genuinely produced a plan
+    // (presented it via exit_plan). A blocked planner that asked a question is
+    // surfaced and the run pauses for the user instead (#110).
+    if (!plannerProducedPlan(agent.plannerPresentedPlan, blueprint)) {
       this.settle(agent)
       return
     }
@@ -904,6 +986,13 @@ export class AgentManager {
         break
       }
       case 'tool_execution_start': {
+        // The planner presenting its plan via exit_plan is what makes the
+        // blueprint real — gate the executor handoff on it, and take the plan
+        // markdown from the tool's argument as the authoritative blueprint (#110).
+        if (role === 'plan' && isExitPlanTool(event.toolName)) {
+          agent.plannerPresentedPlan = true
+          agent.plannerPlan = exitPlanArg(event.args ?? {})
+        }
         if (!agent.isGit) {
           agent.diffTracker.onToolStart(event.toolCallId, event.toolName, event.args ?? {})
         }
