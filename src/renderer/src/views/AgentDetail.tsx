@@ -91,7 +91,7 @@ function MsgText({ text }: { text: string }): JSX.Element {
   )
 }
 
-const Msg = memo(function Msg({
+export const Msg = memo(function Msg({
   m,
   agent,
   hideRole
@@ -140,7 +140,7 @@ const Msg = memo(function Msg({
   )
 })
 
-const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element {
+export const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element {
   const [open, setOpen] = useState(false)
   const Ic = Icon[TOOL_ICONS[t.toolName] ?? 'terminal']
   const arg =

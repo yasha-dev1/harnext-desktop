@@ -1600,6 +1600,12 @@ body.col-resizing {
   width: 1px;
   background: var(--line);
 }
+/* Tool-call rows have no visible stage icon (only message rows carry a role
+   class). Their rail segment must start at the top so consecutive rows join
+   into one continuous line instead of leaving a ~30px gap each (#105). */
+.msg:not(.user):not(.plan):not(.exec):not(.eval)::before {
+  top: 0;
+}
 .msg:last-child::before {
   display: none;
 }
