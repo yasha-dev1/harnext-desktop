@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { extname, join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -28,6 +28,7 @@ import {
   setProjectSecretsFromText
 } from './env/secrets'
 import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
+import { checkForUpdate } from './updater/check'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
 
@@ -46,6 +47,9 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
   ipcMain.on('win:close', () => getWindow()?.close())
 
   ipcMain.handle('app:openExternal', (_e, url: string) => shell.openExternal(url))
+
+  // Auto-update: is a newer GitHub release available? (#162/#125)
+  ipcMain.handle('update:check', () => checkForUpdate(app.getVersion()))
 
   ipcMain.handle('dialog:pickDirectory', async () => {
     const win = getWindow()

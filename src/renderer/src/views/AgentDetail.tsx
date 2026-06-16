@@ -17,9 +17,16 @@ import { useAppStore } from '../stores/useAppStore'
 import StatusPill from '../components/StatusPill'
 import { elapsed, onActivate, providerOf, shortModel } from '../lib/ui'
 import { Icon } from '../components/icons'
+import { FailurePanel } from '../components/FailurePanel'
 import { ProviderLogo } from '../components/ProviderLogo'
 import { AttachButton, AttachmentBar, MessageImages } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
+import { agentDraftKey } from '../lib/draft-keys'
+import { groupTimeline, stepCount, type TimelineGroup } from '../lib/timeline-groups'
+import { navigateHistory, caretAtEdge } from '../lib/composer-history'
+
+// Stable reference so the `?? []` fallback doesn't churn the selector.
+const EMPTY_HISTORY: string[] = []
 
 // The model's provider brand logo, falling back to the generic cube when no
 // brand mark exists for that provider so the tag is never icon-less.
@@ -85,7 +92,16 @@ function MsgText({ text }: { text: string }): JSX.Element {
   )
 }
 
-const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }): JSX.Element {
+export const Msg = memo(function Msg({
+  m,
+  agent,
+  hideRole
+}: {
+  m: MessageItem
+  agent: AgentMeta
+  // The role header is suppressed when the stage group already shows it (#106).
+  hideRole?: boolean
+}): JSX.Element {
   const r = ROLE_META[m.role]
   const Ic = Icon[r.ic]
   return (
@@ -94,15 +110,17 @@ const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }
         <Ic size={15} />
       </span>
       <div className="msg-body">
-        <div className="msg-role">
-          <b>{r.name}</b>
-          {m.role !== 'user' && (
-            <span className="model">
-              <ModelLogo modelId={roleModelId(agent, m.role)} size={11} />
-              {roleModel(agent, m.role)}
-            </span>
-          )}
-        </div>
+        {!hideRole && (
+          <div className="msg-role">
+            <b>{r.name}</b>
+            {m.role !== 'user' && (
+              <span className="model">
+                <ModelLogo modelId={roleModelId(agent, m.role)} size={11} />
+                {roleModel(agent, m.role)}
+              </span>
+            )}
+          </div>
+        )}
         {m.role === 'eval' && m.verdict ? (
           <div className="eval-card">
             <div className="eval-head">
@@ -123,7 +141,7 @@ const Msg = memo(function Msg({ m, agent }: { m: MessageItem; agent: AgentMeta }
   )
 })
 
-const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element {
+export const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element {
   const [open, setOpen] = useState(false)
   const Ic = Icon[TOOL_ICONS[t.toolName] ?? 'terminal']
   const arg =
@@ -195,6 +213,79 @@ const ToolCall = memo(function ToolCall({ t }: { t: ToolCallItem }): JSX.Element
   )
 })
 
+function readCollapsedStages(agentId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(`harnext.stages.${agentId}`) ?? '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+/** Per-agent collapsed-stage state, persisted to localStorage (#106). */
+function useStageCollapsed(agentId: string, key: string): [boolean, (v: boolean) => void] {
+  const [collapsed, setCollapsed] = useState(() => readCollapsedStages(agentId).has(key))
+  const set = (v: boolean): void => {
+    setCollapsed(v)
+    const s = readCollapsedStages(agentId)
+    if (v) s.add(key)
+    else s.delete(key)
+    try {
+      localStorage.setItem(`harnext.stages.${agentId}`, JSON.stringify([...s]))
+    } catch {
+      /* storage unavailable — collapse is still in-memory for this view */
+    }
+  }
+  return [collapsed, set]
+}
+
+/** A collapsible Planner / Executor / Evaluator stage section (#106). */
+export function StageGroup({
+  group,
+  agent
+}: {
+  group: TimelineGroup
+  agent: AgentMeta
+}): JSX.Element {
+  const [collapsed, setCollapsed] = useStageCollapsed(agent.id, group.key)
+  const meta = ROLE_META[group.role]
+  const Ic = Icon[meta.ic]
+  const steps = stepCount(group)
+  return (
+    <div className={'stage-group' + (collapsed ? ' collapsed' : '')}>
+      <button
+        className="stage-head"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className={'msg-ic ' + meta.icCls}>
+          <Ic size={14} />
+        </span>
+        <b>{meta.name}</b>
+        <span className="stage-model">
+          <ModelLogo modelId={roleModelId(agent, group.role)} size={11} />
+          {roleModel(agent, group.role)}
+        </span>
+        {steps > 0 && (
+          <span className="stage-count">
+            {steps} step{steps > 1 ? 's' : ''}
+          </span>
+        )}
+        <span className={'stage-chev' + (collapsed ? '' : ' open')}>
+          <Icon.chevron size={13} />
+        </span>
+      </button>
+      {!collapsed &&
+        group.items.map((item) =>
+          item.kind === 'message' ? (
+            <Msg key={`m${item.seq}`} m={item} agent={agent} hideRole />
+          ) : (
+            <ToolCall key={`t${item.seq}`} t={item} />
+          )
+        )}
+    </div>
+  )
+}
+
 function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[] }): JSX.Element {
   const streaming = useAppStore((s) => s.streaming[agent.id])
   const sendPrompt = useAppStore((s) => s.sendPrompt)
@@ -202,7 +293,17 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   const recallSteer = useAppStore((s) => s.recallSteer)
   const pendingSteers = useAppStore((s) => s.steers[agent.id]) ?? []
   const undelivered = useAppStore((s) => s.undeliveredSteers[agent.id]) ?? []
-  const [reply, setReply] = useState('')
+  // Follow-up draft persists across navigation (#132): keyed per conversation.
+  const replyKey = agentDraftKey(agent.id)
+  const reply = useAppStore((s) => s.composerDrafts[replyKey] ?? '')
+  const setDraft = useAppStore((s) => s.setDraft)
+  const clearDraft = useAppStore((s) => s.clearDraft)
+  const setReply = (v: string): void => setDraft(replyKey, v)
+  // Shell-style ↑/↓ prompt history (#133): per-conversation sent prompts.
+  const history = useAppStore((s) => s.promptHistory[replyKey]) ?? EMPTY_HISTORY
+  const pushPromptHistory = useAppStore((s) => s.pushPromptHistory)
+  const [histIndex, setHistIndex] = useState<number | null>(null)
+  const histDraft = useRef('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [resuming, setResuming] = useState(false)
   const att = useAttachments()
@@ -239,7 +340,9 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
     // Image-only is allowed for a reply; steers are text-only.
     if ((!text && (isSteer || att.items.length === 0)) || !canCompose) return
     const images = isSteer ? [] : att.items.map((a) => a.dataUrl)
-    setReply('')
+    pushPromptHistory(replyKey, text)
+    setHistIndex(null)
+    clearDraft(replyKey)
     if (!isSteer) att.clear()
     setSendError(null)
     if (undelivered.length) {
@@ -255,12 +358,23 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
   }
 
   // Esc on an empty composer recalls the most recently queued steer for editing.
-  const onComposerKey = (e: React.KeyboardEvent): void => {
+  const onComposerKey = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape' && reply.trim() === '' && pendingSteers.length) {
       e.preventDefault()
       void recallSteer(agent.id).then((t) => t != null && setReply(t))
     } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       void send()
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const ta = e.currentTarget
+      const edge = caretAtEdge(ta.value, ta.selectionStart ?? 0, ta.selectionEnd ?? 0)
+      if (e.key === 'ArrowUp' ? !edge.atFirstLine : !edge.atLastLine) return
+      if (e.key === 'ArrowUp' && history.length === 0) return
+      e.preventDefault()
+      if (histIndex === null) histDraft.current = reply
+      const draft = histIndex === null ? reply : histDraft.current
+      const res = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down', history, histIndex, draft)
+      setHistIndex(res.index)
+      setReply(res.text)
     }
   }
 
@@ -274,11 +388,18 @@ function Thread({ agent, timeline }: { agent: AgentMeta; timeline: TimelineItem[
       }}
     >
       <div className="thread-lead">Conversation</div>
-      {timeline.map((item) =>
-        item.kind === 'message' ? (
-          <Msg key={`m${item.seq}`} m={item} agent={agent} />
+      {groupTimeline(timeline).map((group) =>
+        // User turns stay flat; agent stages (plan/exec/eval) are collapsible (#106).
+        group.role === 'user' ? (
+          group.items.map((item) =>
+            item.kind === 'message' ? (
+              <Msg key={`m${item.seq}`} m={item} agent={agent} />
+            ) : (
+              <ToolCall key={`t${item.seq}`} t={item} />
+            )
+          )
         ) : (
-          <ToolCall key={`t${item.seq}`} t={item} />
+          <StageGroup key={group.key} group={group} agent={agent} />
         )
       )}
       {streaming?.text && (
@@ -1059,7 +1180,9 @@ export default function AgentDetail(): JSX.Element {
   const agentsLoaded = useAppStore((s) => s.agentIdsByProject[projectId] !== undefined)
 
   const [actionError, setActionError] = useState<string | null>(null)
+  const [errorDismissed, setErrorDismissed] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const resumeAgent = useAppStore((s) => s.resumeAgent)
   const renameAgent = useAppStore((s) => s.renameAgent)
 
   // Reset per-agent UI state when navigating between agents.
@@ -1067,6 +1190,7 @@ export default function AgentDetail(): JSX.Element {
   if (lastAgentId !== agentId) {
     setLastAgentId(agentId)
     setActionError(null)
+    setErrorDismissed(false)
   }
 
   useEffect(() => {
@@ -1146,10 +1270,16 @@ export default function AgentDetail(): JSX.Element {
               {elapsed(agent.createdAt, isRunning ? now : agent.updatedAt)}
             </span>
           </div>
-          {(actionError || agent.error) && (
-            <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--err)' }}>
-              {actionError ?? agent.error}
-            </div>
+          {(actionError || (agent.error && !errorDismissed)) && (
+            <FailurePanel
+              error={actionError ?? agent.error!}
+              onDismiss={() => (actionError ? setActionError(null) : setErrorDismissed(true))}
+              onRetry={
+                !actionError && agent.status === 'failed'
+                  ? () => void resumeAgent(agent.id)
+                  : undefined
+              }
+            />
           )}
         </div>
         <div className="detail-actions">
