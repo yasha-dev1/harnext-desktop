@@ -10,28 +10,14 @@ permissions:
   contents: write # create the release and upload installer assets
 
 jobs:
-  # electron-builder's publisher finds an existing release by tag only when it is
-  # *published* — GitHub's get-release-by-tag returns 404 for drafts, so each of the
-  # three platform jobs would otherwise create its own duplicate draft and the
-  # installers would land split across them. Pre-create one published release here;
-  # every build job then resolves the same release by tag and uploads into it.
-  create-release:
-    name: Create the GitHub Release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create release if it does not exist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" \
-            || gh release create "${{ github.ref_name }}" \
-                 --repo "${{ github.repository }}" \
-                 --title "${{ github.ref_name }}" \
-                 --notes "Automated release ${{ github.ref_name }} — installers for macOS, Windows and Linux."
-
-  release:
-    name: Build & publish (${{ matrix.os }})
-    needs: create-release
+  # electron-builder's own GitHub publisher proved unworkable here: it can't find an
+  # existing *draft* by tag (get-release-by-tag 404s on drafts) so every platform job
+  # created a duplicate draft, and when the release is pre-created *published* it
+  # silently refuses to upload into it. So we don't use its publisher at all — each
+  # platform builds with `--publish never` and uploads its installers as workflow
+  # artifacts; a single `publish` job then assembles one release from all of them.
+  build:
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # one OS failing shouldn't drop the others' artifacts
@@ -93,9 +79,50 @@ jobs:
           TARBALL=$(cd ../harnext/packages/core && npm pack --silent | tail -1)
           npm install "../harnext/packages/core/$TARBALL" --no-audit --no-fund
 
-      - name: Build & publish installers
+      - name: Build installers (no publish)
         working-directory: harnext-desktop
+        shell: bash
+        run: npm run ${{ matrix.script }} -- --publish never
+
+      # Each runner's installers (plus the auto-update *.yml / *.blockmap metadata)
+      # land in harnext-desktop/dist. Hand them to the publish job as an artifact.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            harnext-desktop/dist/*.exe
+            harnext-desktop/dist/*.dmg
+            harnext-desktop/dist/*.zip
+            harnext-desktop/dist/*.AppImage
+            harnext-desktop/dist/*.deb
+            harnext-desktop/dist/*.snap
+            harnext-desktop/dist/*.blockmap
+            harnext-desktop/dist/latest*.yml
+
+  # One release, assembled from every platform's artifacts — no electron-builder
+  # publisher, no duplicate drafts.
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+          pattern: installers-*
+          merge-multiple: true # flatten every platform's files into installers/
+
+      - name: Create the release and upload installers
         env:
-          # electron-builder's GitHub publisher uses this to create/upload the release.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run ${{ matrix.script }} -- --publish always
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --notes "Automated release ${{ github.ref_name }} — installers for macOS, Windows and Linux." \
+            installers/* \
+          || gh release upload "${{ github.ref_name }}" installers/* \
+               --repo "${{ github.repository }}" --clobber
