@@ -12,12 +12,15 @@ interface TitlebarProps {
   projects: Project[]
   current: Project | null
   settingsActive: boolean
+  /** Show the "update available" dot on the Settings entry (#125). */
+  updateAvailable?: boolean
 }
 
 export default function Titlebar({
   projects,
   current,
-  settingsActive
+  settingsActive,
+  updateAvailable = false
 }: TitlebarProps): JSX.Element {
   const [menu, setMenu] = useState<'proj' | 'branch' | null>(null)
   const projChipRef = useRef<HTMLButtonElement>(null)
@@ -203,11 +206,12 @@ export default function Titlebar({
       <div className="tb-tools">
         <button
           className={'tb-icon' + (settingsActive ? ' active' : '')}
-          title="Settings"
+          title={updateAvailable ? 'Settings — update available' : 'Settings'}
           onClick={() => current && navigate(`/project/${current.id}/settings`)}
           disabled={!current}
         >
           <Icon.settings size={16} />
+          {updateAvailable && <span className="tb-badge" aria-label="Update available" />}
         </button>
       </div>
       <div className="tb-wc">
