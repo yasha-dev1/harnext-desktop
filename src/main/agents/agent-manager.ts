@@ -36,6 +36,7 @@ import {
   mergeWorktree,
   pushBranch,
   removeWorktree,
+  resolveBaseRef,
   worktreeDiff
 } from '../git'
 import { DiffTracker } from './diff-service'
@@ -366,12 +367,15 @@ export class AgentManager {
     let worktree: { path: string; branch: string } | null = null
     if (project.isGit) {
       const suggested = await generateWorktreeName(provider, model, repoCwd, cleanPrompt)
+      // No explicit base (#97) → branch off freshly-fetched origin/<default> so
+      // agents start from latest upstream main, not a stale local HEAD (#127).
+      const baseRef = resolveBaseRef(repoCwd, input.baseBranch)
       worktree = createWorktree(
         repoCwd,
         suggested ?? title,
         agentId,
         settings.worktreeRoot,
-        input.baseBranch
+        baseRef
       )
     }
     const cwd = worktree?.path ?? repoCwd

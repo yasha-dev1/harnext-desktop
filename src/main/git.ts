@@ -77,6 +77,29 @@ export function defaultBaseBranch(path: string): string {
   return currentBranch(path) ?? 'main'
 }
 
+/**
+ * Resolve the ref a new agent's worktree should branch from (#127).
+ *
+ * Resolution order:
+ *   1. an explicit per-agent base (#97) — passed straight through;
+ *   2. otherwise, when the repo has a remote: `git fetch` it and branch off the
+ *      remote's default branch (`origin/<default>`), so agents always start from
+ *      fresh upstream main rather than a possibly-stale or unrelated local HEAD;
+ *   3. fall back to `HEAD` when there is no remote (or the remote default ref
+ *      can't be verified after fetching).
+ */
+export function resolveBaseRef(path: string, explicitBase?: string): string {
+  if (explicitBase && explicitBase.trim()) return explicitBase
+  if (!hasRemote(path)) return 'HEAD'
+  fetchRemote(path)
+  const base = `origin/${defaultBaseBranch(path)}`
+  // Only branch off the remote ref if it actually exists post-fetch; otherwise
+  // a malformed remote (no origin/HEAD, no origin/main|master) would make
+  // `git worktree add` fail. HEAD is always valid.
+  if (runGit(['rev-parse', '--verify', '--quiet', base], path).exit === 0) return base
+  return 'HEAD'
+}
+
 /** Commit any pending worktree changes onto the current branch (no-op if clean). */
 export function commitWorktree(worktreePath: string, message: string): void {
   runGit(['add', '-A'], worktreePath)
