@@ -506,6 +506,29 @@ html[data-density='compact'] .body {
   overflow-y: auto;
   padding: 10px 14px 16px;
 }
+/* Sidebar conversation search (#116). */
+.aside-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.aside-search svg {
+  color: var(--tx-2);
+  flex: none;
+}
+.aside-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--tx-0);
+  font-size: 12.5px;
+}
 .aside-sect {
   display: flex;
   align-items: center;
