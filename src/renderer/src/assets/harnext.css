@@ -4539,6 +4539,15 @@ body.col-resizing {
   font-size: 12px;
   text-align: center;
 }
+/* Provider header in the cross-provider model picker (#103). */
+.mp-group {
+  padding: 8px 10px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--tx-2);
+}
 
 /* ── Update popup (#162) ───────────────────────────────────────────────── */
 .update-toast {
