@@ -19,6 +19,7 @@ import { EditorLogo } from '../components/EditorLogo'
 import { SOUNDS, playSound } from '../lib/sounds'
 import { ProviderLogo } from '../components/ProviderLogo'
 import McpSettings from '../components/McpSettings'
+import EnvSecrets from '../components/EnvSecrets'
 
 const EDITORS = ['VS Code', 'Cursor', 'Zed', 'Windsurf', 'Neovim', 'JetBrains', 'Sublime Text']
 
@@ -1055,6 +1056,8 @@ function EnvironmentTab({
           </div>
         )}
       </div>
+
+      <EnvSecrets project={project} setOverrides={setOverrides} />
 
       <div className="set-card">
         <div className="set-card-head">
