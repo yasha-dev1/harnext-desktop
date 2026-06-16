@@ -44,26 +44,41 @@ function playUrl(url: string): void {
   void a.play().catch(() => {})
 }
 
+/** What playing a cue id resolves to — pure so the dispatch is unit-testable. */
+export type SoundAction =
+  | { kind: 'silent' }
+  | { kind: 'tones'; freqs: number[] }
+  | { kind: 'file'; path: string }
+
+/**
+ * Decide what cue id `id` should play. Pure (no Web Audio / IPC) so the rules
+ * are testable: `none`/empty and a `custom` cue with no file are silent; `ding`
+ * and `chime` map to their tone sequences; and any unknown/removed id (e.g. a
+ * persisted `'bruh'` from an older version) falls back to the chime — removing a
+ * sound never silently disables the "agent done" cue.
+ */
+export function resolveSound(id: string, customPath?: string): SoundAction {
+  if (!id || id === 'none') return { kind: 'silent' }
+  if (id === 'custom') return customPath ? { kind: 'file', path: customPath } : { kind: 'silent' }
+  if (id === 'ding') return { kind: 'tones', freqs: [880, 1318.5] }
+  return { kind: 'tones', freqs: [659.25, 880] } // chime + fallback for removed ids
+}
+
 /**
  * Play the cue with the given id. `custom` loads `customPath` from disk via the
  * main process; unknown / `none` / a custom id with no path are silent.
  */
 export function playSound(id: string, customPath?: string): void {
-  if (!id || id === 'none') return
+  const action = resolveSound(id, customPath)
   try {
-    if (id === 'custom') {
-      if (!customPath) return
+    if (action.kind === 'file') {
       void window.api
-        .readSound(customPath)
+        .readSound(action.path)
         .then((url) => url && playUrl(url))
         .catch(() => {})
-      return
+    } else if (action.kind === 'tones') {
+      tones(action.freqs)
     }
-    if (id === 'ding') return tones([880, 1318.5])
-    // 'chime' and any unknown/removed id (e.g. a persisted 'bruh' from an older
-    // version) fall back to the default chime — removing a sound never silently
-    // disables the cue.
-    return tones([659.25, 880])
   } catch {
     /* audio unavailable in this environment — ignore */
   }
