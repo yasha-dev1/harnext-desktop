@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Opt-in pre-commit hook (#148). Enable with:  git config core.hooksPath .githooks
+#
+# Runs the FAST checks (lint + format) so obvious issues are caught before they're
+# committed. The heavier typecheck + tests run in the PR pre-flight gate
+# (.claude/skills/pr-ready-sound/preflight.sh) and in CI, to keep commits quick.
+#
+# Bypass for a work-in-progress commit with:  git commit --no-verify
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+fail() {
+  printf '\n✗ pre-commit: %s failed. Fix it, or commit with --no-verify to bypass.\n' "$1" >&2
+  exit 1
+}
+
+printf '▶ pre-commit: lint\n'
+npm run lint --silent || fail "lint"
+
+printf '▶ pre-commit: format check\n'
+npm run format:check --silent || fail "format check"
+
+printf '✓ pre-commit checks passed\n'
