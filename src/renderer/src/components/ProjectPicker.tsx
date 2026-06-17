@@ -22,6 +22,14 @@ export default function ProjectPicker({
   const [confirmId, setConfirmId] = useState<number | null>(null)
   const pending = projects.find((p) => p.id === confirmId)
 
+  // Drop focus from the dialog button before the modal unmounts, so Electron
+  // doesn't strand native keyboard focus on a removed node — which leaves the
+  // next page's text box unable to accept typing (#191).
+  const closeConfirm = (): void => {
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    setConfirmId(null)
+  }
+
   const browse = async (): Promise<void> => {
     const project = await openProjectDialog()
     if (project) onOpen(project)
@@ -115,7 +123,7 @@ export default function ProjectPicker({
       </button>
 
       {pending && (
-        <div className="modal-backdrop" onClick={() => setConfirmId(null)}>
+        <div className="modal-backdrop" onClick={closeConfirm}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               <Icon.trash size={15} />
@@ -126,14 +134,14 @@ export default function ProjectPicker({
               folder on disk (<code>{pending.path}</code>) is kept.
             </p>
             <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setConfirmId(null)}>
+              <button className="btn ghost" onClick={closeConfirm}>
                 Cancel
               </button>
               <button
                 className="btn danger"
                 onClick={() => {
                   void removeProject(pending.id)
-                  setConfirmId(null)
+                  closeConfirm()
                 }}
               >
                 <Icon.trash size={14} />
