@@ -8,7 +8,8 @@ import {
   listBranches,
   currentBranch,
   openBranchWorktree,
-  worktreeForBranch
+  worktreeForBranch,
+  resolveBaseRef
 } from './git'
 
 /**
@@ -126,5 +127,92 @@ describe('git branch-switcher worktrees (#96)', () => {
     const again = openBranchWorktree(repo2, 'origin/develop', wtRoot2)
     expect(again.path).toBe(first.path)
     expect(worktreeForBranch(repo2, 'develop')).toBe(first.path)
+  })
+})
+
+/**
+ * Integration test for #127: new agents should branch off freshly-fetched
+ * origin/main by default, not a stale/unrelated local HEAD.
+ */
+describe('resolveBaseRef — default base for new agents (#127)', () => {
+  let root3: string
+  let remote: string
+  let clone: string
+  let wtRoot3: string
+
+  const git = (cwd: string, ...args: string[]): void => {
+    const r = spawnSync('git', args, { cwd, encoding: 'utf-8' })
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`)
+  }
+
+  beforeAll(() => {
+    root3 = mkdtempSync(join(tmpdir(), 'harnext-git127-'))
+    remote = join(root3, 'remote.git')
+    const seed = join(root3, 'seed')
+    clone = join(root3, 'repo')
+    wtRoot3 = join(root3, 'worktrees')
+    git(root3, 'init', '-q', '--bare', 'remote.git')
+    mkdirSync(seed, { recursive: true })
+    git(seed, 'init', '-q')
+    git(seed, 'config', 'user.email', 't@t.local')
+    git(seed, 'config', 'user.name', 'Tester')
+    writeFileSync(join(seed, 'main.txt'), 'v1')
+    git(seed, 'add', '-A')
+    git(seed, 'commit', '-qm', 'init')
+    git(seed, 'branch', '-M', 'main')
+    git(seed, 'remote', 'add', 'origin', remote)
+    git(seed, 'push', '-q', 'origin', 'main')
+    git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+    git(root3, 'clone', '-q', remote, 'repo')
+    git(clone, 'config', 'user.email', 't@t.local')
+    git(clone, 'config', 'user.name', 'Tester')
+  })
+
+  afterAll(() => rmSync(root3, { recursive: true, force: true }))
+
+  it('an explicit base ref always wins (#97 still takes precedence)', () => {
+    expect(resolveBaseRef(clone, 'develop')).toBe('develop')
+    expect(resolveBaseRef(clone, 'origin/feature')).toBe('origin/feature')
+  })
+
+  it('defaults to origin/<default> when a remote is present', () => {
+    expect(resolveBaseRef(clone)).toBe('origin/main')
+    expect(resolveBaseRef(clone, '  ')).toBe('origin/main') // blank base is ignored
+  })
+
+  it('branches off freshly-fetched origin/main, not a stale local HEAD', () => {
+    // Diverge the local HEAD: a local-only commit the remote never saw.
+    writeFileSync(join(clone, 'local-only.txt'), 'stale')
+    git(clone, 'add', '-A')
+    git(clone, 'commit', '-qm', 'local drift')
+    // Meanwhile origin/main advances with a new file, pushed via the seed repo.
+    const seed2 = join(root3, 'seed2')
+    git(root3, 'clone', '-q', 'remote.git', 'seed2')
+    git(seed2, 'config', 'user.email', 't@t.local')
+    git(seed2, 'config', 'user.name', 'Tester')
+    writeFileSync(join(seed2, 'upstream.txt'), 'fresh')
+    git(seed2, 'add', '-A')
+    git(seed2, 'commit', '-qm', 'upstream advance')
+    git(seed2, 'push', '-q', 'origin', 'main')
+
+    // resolveBaseRef fetches, so the worktree must reflect the *new* upstream
+    // state: it has upstream.txt and NOT the local-only drift.
+    const base = resolveBaseRef(clone)
+    expect(base).toBe('origin/main')
+    const wt = createWorktree(clone, 'off-origin-main', 'cccccc', wtRoot3, base)
+    expect(existsSync(join(wt.path, 'upstream.txt'))).toBe(true)
+    expect(existsSync(join(wt.path, 'local-only.txt'))).toBe(false)
+  })
+
+  it('falls back to HEAD when the repo has no remote', () => {
+    const noRemote = join(root3, 'standalone')
+    mkdirSync(noRemote, { recursive: true })
+    git(noRemote, 'init', '-q')
+    git(noRemote, 'config', 'user.email', 't@t.local')
+    git(noRemote, 'config', 'user.name', 'Tester')
+    writeFileSync(join(noRemote, 'a.txt'), 'a')
+    git(noRemote, 'add', '-A')
+    git(noRemote, 'commit', '-qm', 'init')
+    expect(resolveBaseRef(noRemote)).toBe('HEAD')
   })
 })

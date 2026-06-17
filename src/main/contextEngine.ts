@@ -9,6 +9,7 @@ import {
   saveCloudTokens
 } from '@harnext/core'
 import * as db from './db'
+import { normalizeBaseUrl, orgFromToken } from './context-engine-util'
 import type { ContextEngineStatus } from '../shared/types'
 
 // Drives the Harnext Context Engine sign-in. The OAuth 2.0 Device Authorization
@@ -27,21 +28,6 @@ let abort: AbortController | null = null
 
 function baseUrl(): string {
   return db.getSettings().contextEngineUrl
-}
-
-/** Best-effort org/project id from the access token's JWT payload (claim `org`). */
-function orgFromToken(accessToken: string): string | undefined {
-  try {
-    const payload = accessToken.split('.')[1]
-    const json = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
-      string,
-      unknown
-    >
-    const org = json.org ?? json.org_id ?? json.tenant
-    return typeof org === 'string' ? org : undefined
-  } catch {
-    return undefined
-  }
 }
 
 export function getContextEngineStatus(): ContextEngineStatus {
@@ -119,6 +105,6 @@ export function disconnectContextEngine(): void {
 }
 
 export function setContextEngineBaseUrl(url: string): ContextEngineStatus {
-  db.setSettings({ contextEngineUrl: url.trim().replace(/\/+$/, '') })
+  db.setSettings({ contextEngineUrl: normalizeBaseUrl(url) })
   return getContextEngineStatus()
 }

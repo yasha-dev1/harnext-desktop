@@ -8,7 +8,21 @@ on:
 jobs:
   lint-test:
     name: Lint & unit tests
-    runs-on: ubuntu-latest
+    # Run the pure-logic suite on more than one OS so platform-specific
+    # regressions (path separators, line endings, shell assumptions) surface in
+    # CI rather than on a contributor's machine — a named gap in #138.
+    # `fail-fast: false` so one OS failing still reports the others.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # The stub/install steps below use POSIX shell (`printf`, `mkdir -p`); `bash`
+    # routes them through Git Bash on the Windows runner too. LF is enforced via
+    # .gitattributes so `prettier --check` doesn't trip over CRLF checkouts.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +51,20 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Typecheck the renderer (the whole UI: components, stores, views, libs +
+      # shared types). It imports nothing from @harnext/core, so `tsc` runs in CI
+      # without the real package — catching type errors that previously only
+      # surfaced locally (#138). The main process still can't be typechecked here
+      # (it needs core's real types — see the stub note above / #16). Run once
+      # (ubuntu) since tsc is deterministic across OSes.
+      - name: Typecheck (renderer)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run typecheck:web
+
+      # Catch source formatting drift before it lands (a named gap in #138).
+      - name: Format check
+        run: npm run format:check
 
       - name: Unit tests + coverage
         run: npm run test:coverage

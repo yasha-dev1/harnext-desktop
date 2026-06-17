@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { extname, join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -11,6 +11,7 @@ import type {
   McpScope,
   McpServerConfig,
   ProjectEnvConfig,
+  ProjectSecretsInfo,
   StartAgentInput
 } from '../shared/types'
 import { addServer, listServers, removeServer, setServerEnabled } from './mcp'
@@ -18,7 +19,16 @@ import { AgentManager } from './agents/agent-manager'
 import * as db from './db'
 import { openInEditor } from './editor'
 import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
+import {
+  importSecretsFromEnvFile,
+  listProjectSecretKeys,
+  removeProjectSecret,
+  secretsAvailable,
+  setProjectSecret,
+  setProjectSecretsFromText
+} from './env/secrets'
 import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
+import { checkForUpdate } from './updater/check'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
 import {
@@ -54,6 +64,9 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
 
   ipcMain.handle('app:openExternal', (_e, url: string) => shell.openExternal(url))
 
+  // Auto-update: is a newer GitHub release available? (#162/#125)
+  ipcMain.handle('update:check', () => checkForUpdate(app.getVersion()))
+
   ipcMain.handle('dialog:pickDirectory', async () => {
     const win = getWindow()
     if (!win) return null
@@ -69,6 +82,15 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     const result = await dialog.showOpenDialog(win, {
       properties: ['openFile'],
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'] }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:pickEnvFile', async () => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'showHiddenFiles']
     })
     return result.canceled ? null : result.filePaths[0]
   })
@@ -241,6 +263,33 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     return db.setProjectEnvConfig(id, { ...base, ...patch }) ?? project
   })
 
+  // Per-project encrypted secret store (#123). Only names cross to the renderer.
+  const secretsInfo = (id: number): ProjectSecretsInfo => ({
+    available: secretsAvailable(),
+    keys: listProjectSecretKeys(id)
+  })
+  ipcMain.handle('projects:secrets', (_e, id: number) => secretsInfo(id))
+  ipcMain.handle('projects:setSecret', (_e, id: number, key: string, value: string) => {
+    if (!db.getProject(id)) throw new Error('Project not found')
+    setProjectSecret(id, key, value)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:setSecretsBulk', (_e, id: number, text: string) => {
+    if (!db.getProject(id)) throw new Error('Project not found')
+    setProjectSecretsFromText(id, text)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:removeSecret', (_e, id: number, key: string) => {
+    removeProjectSecret(id, key)
+    return secretsInfo(id)
+  })
+  ipcMain.handle('projects:importSecretsFromEnv', (_e, id: number, path?: string) => {
+    const project = db.getProject(id)
+    if (!project) throw new Error('Project not found')
+    importSecretsFromEnvFile(id, project.path, path ?? '.env')
+    return secretsInfo(id)
+  })
+
   // agents
   ipcMain.handle('agents:list', (_e, projectId: number) => db.listAgents(projectId, manager.isLive))
   ipcMain.handle('agents:start', (_e, input: StartAgentInput) => manager.startAgent(input))
@@ -261,6 +310,9 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
       manager.openPullRequest(agentId, opts)
   )
   ipcMain.handle('agents:discard', (_e, agentId: string) => manager.discard(agentId))
+  ipcMain.handle('agents:rename', (_e, agentId: string, title: string) =>
+    db.renameAgent(agentId, title)
+  )
   ipcMain.handle('agents:openEditor', async (_e, agentId: string) => {
     const meta = db.getAgent(agentId, manager.isLive(agentId))
     if (!meta) throw new Error('Agent not found')

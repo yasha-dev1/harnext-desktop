@@ -1,8 +1,12 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
+import { copyFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { userInfo } from 'node:os'
 import { DEFAULT_WORKTREE_ROOT } from './git'
+import { runMigrations } from './migrations'
+import { mergeStoredSettings } from './settings-merge'
+import { MIGRATIONS } from './migrations-sql'
 
 /** A friendly default identity derived from the machine, not hardcoded. */
 function defaultDisplayName(): string {
@@ -33,180 +37,39 @@ import type {
 
 let db: Database.Database
 
-const MIGRATIONS = [
-  // v1 — original schema (projects, agents, messages, tool_calls, file_changes)
-  `
-  CREATE TABLE projects (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL,
-    path        TEXT NOT NULL UNIQUE,
-    created_at  INTEGER NOT NULL
-  );
-
-  CREATE TABLE agents (
-    id              TEXT PRIMARY KEY,
-    project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    title           TEXT NOT NULL,
-    status          TEXT NOT NULL CHECK (status IN ('running','idle','error','aborted')),
-    provider        TEXT,
-    model_id        TEXT,
-    permission_mode TEXT NOT NULL DEFAULT 'acceptEdits',
-    error           TEXT,
-    created_at      INTEGER NOT NULL,
-    updated_at      INTEGER NOT NULL
-  );
-
-  CREATE TABLE messages (
-    id         INTEGER PRIMARY KEY,
-    agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    seq        INTEGER NOT NULL,
-    role       TEXT NOT NULL CHECK (role IN ('user','assistant')),
-    content    TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE tool_calls (
-    id           INTEGER PRIMARY KEY,
-    agent_id     TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    seq          INTEGER NOT NULL,
-    tool_call_id TEXT NOT NULL,
-    tool_name    TEXT NOT NULL,
-    args_json    TEXT NOT NULL,
-    result       TEXT,
-    is_error     INTEGER NOT NULL DEFAULT 0,
-    started_at   INTEGER NOT NULL,
-    ended_at     INTEGER
-  );
-
-  CREATE TABLE file_changes (
-    id             INTEGER PRIMARY KEY,
-    agent_id       TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    tool_call_id   TEXT NOT NULL,
-    path           TEXT NOT NULL,
-    before_content TEXT,
-    after_content  TEXT,
-    diff           TEXT NOT NULL,
-    additions      INTEGER NOT NULL DEFAULT 0,
-    deletions      INTEGER NOT NULL DEFAULT 0,
-    created_at     INTEGER NOT NULL
-  );
-
-  CREATE INDEX idx_messages_agent ON messages(agent_id, seq);
-  CREATE INDEX idx_tool_calls_agent ON tool_calls(agent_id, seq);
-  CREATE INDEX idx_file_changes_agent ON file_changes(agent_id, created_at);
-  `,
-  // v2 — design overhaul: worktrees, goal mode, design statuses, loops, settings
-  `
-  ALTER TABLE projects ADD COLUMN branch TEXT;
-  ALTER TABLE projects ADD COLUMN is_git INTEGER NOT NULL DEFAULT 0;
-  ALTER TABLE projects ADD COLUMN last_opened_at INTEGER NOT NULL DEFAULT 0;
-  UPDATE projects SET last_opened_at = created_at;
-
-  CREATE TABLE agents_v2 (
-    id              TEXT PRIMARY KEY,
-    project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    title           TEXT NOT NULL,
-    status          TEXT NOT NULL CHECK (status IN ('running','review','input','done','failed','paused')),
-    mode            TEXT NOT NULL DEFAULT 'single' CHECK (mode IN ('single','goal')),
-    model_id        TEXT,
-    smart_model     TEXT,
-    exec_model      TEXT,
-    permission_mode TEXT NOT NULL DEFAULT 'acceptEdits',
-    branch          TEXT,
-    worktree_path   TEXT,
-    progress        TEXT NOT NULL DEFAULT '',
-    additions       INTEGER NOT NULL DEFAULT 0,
-    deletions       INTEGER NOT NULL DEFAULT 0,
-    error           TEXT,
-    created_at      INTEGER NOT NULL,
-    updated_at      INTEGER NOT NULL
-  );
-  INSERT INTO agents_v2 (id, project_id, title, status, mode, model_id, permission_mode, error, created_at, updated_at)
-    SELECT id, project_id, title,
-      CASE status WHEN 'running' THEN 'failed' WHEN 'idle' THEN 'input' WHEN 'error' THEN 'failed' ELSE 'paused' END,
-      'single', model_id, permission_mode, error, created_at, updated_at
-    FROM agents;
-  DROP TABLE agents;
-  ALTER TABLE agents_v2 RENAME TO agents;
-
-  CREATE TABLE messages_v2 (
-    id         INTEGER PRIMARY KEY,
-    agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    seq        INTEGER NOT NULL,
-    role       TEXT NOT NULL CHECK (role IN ('user','plan','exec','eval')),
-    content    TEXT NOT NULL,
-    verdict    TEXT,
-    created_at INTEGER NOT NULL
-  );
-  INSERT INTO messages_v2 (id, agent_id, seq, role, content, created_at)
-    SELECT id, agent_id, seq, CASE role WHEN 'assistant' THEN 'exec' ELSE 'user' END, content, created_at
-    FROM messages;
-  DROP TABLE messages;
-  ALTER TABLE messages_v2 RENAME TO messages;
-  CREATE INDEX idx_messages_agent ON messages(agent_id, seq);
-
-  ALTER TABLE tool_calls ADD COLUMN role TEXT NOT NULL DEFAULT 'exec';
-
-  CREATE TABLE settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-
-  CREATE TABLE loops (
-    id          INTEGER PRIMARY KEY,
-    project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    title       TEXT NOT NULL,
-    prompt      TEXT NOT NULL,
-    type        TEXT NOT NULL CHECK (type IN ('interval','daily','weekly')),
-    config_json TEXT NOT NULL,
-    cadence     TEXT NOT NULL,
-    status      TEXT NOT NULL CHECK (status IN ('active','paused')),
-    last_run_at INTEGER,
-    next_run_at INTEGER,
-    runs        INTEGER NOT NULL DEFAULT 0,
-    created_at  INTEGER NOT NULL
-  );
-
-  CREATE TABLE loop_runs (
-    id         INTEGER PRIMARY KEY,
-    loop_id    INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
-    agent_id   TEXT,
-    status     TEXT NOT NULL CHECK (status IN ('done','failed','review')),
-    additions  INTEGER NOT NULL DEFAULT 0,
-    deletions  INTEGER NOT NULL DEFAULT 0,
-    summary    TEXT NOT NULL DEFAULT '',
-    created_at INTEGER NOT NULL
-  );
-  CREATE INDEX idx_loop_runs_loop ON loop_runs(loop_id, created_at DESC);
-  `,
-  // v3 — per-project Docker sandbox config (detected on add; JSON, see ProjectEnvConfig)
-  `
-  ALTER TABLE projects ADD COLUMN env_config TEXT;
-  `,
-  // v4 — image attachments on a user message (JSON array of data URLs)
-  `
-  ALTER TABLE messages ADD COLUMN images TEXT;
-  `,
-  // v5 — branch switcher (#96): the worktree a project's context is pointed at.
-  // Null = the main checkout. Agents and the env then run in this worktree.
-  `
-  ALTER TABLE projects ADD COLUMN active_worktree_path TEXT;
-  ALTER TABLE projects ADD COLUMN active_branch TEXT;
-  `
-]
-
 export function initDb(): void {
   db = new Database(join(app.getPath('userData'), 'harnext.db'))
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
   const version = db.pragma('user_version', { simple: true }) as number
-  for (let i = version; i < MIGRATIONS.length; i++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[i])
-      db.pragma(`user_version = ${i + 1}`)
-    })()
-  }
+  const dbPath = join(app.getPath('userData'), 'harnext.db')
+  runMigrations({
+    version,
+    count: MIGRATIONS.length,
+    apply: (i) =>
+      db.transaction(() => {
+        db.exec(MIGRATIONS[i])
+        db.pragma(`user_version = ${i + 1}`)
+      })(),
+    // Back up an existing DB once before applying any migration, so a failed
+    // post-update migration is recoverable (#162). A fresh DB (v0) has nothing
+    // to lose, so skip it.
+    backup:
+      version > 0
+        ? () => {
+            try {
+              copyFileSync(dbPath, `${dbPath}.bak`)
+            } catch {
+              /* best-effort — never block startup on the backup */
+            }
+          }
+        : undefined,
+    onDowngrade: (dbv, appv) =>
+      console.warn(
+        `[db] schema v${dbv} is newer than this build (v${appv}); skipping migrations to avoid corruption`
+      )
+  })
 
   // A loop run's placeholder ('review' / "Running…") is reconciled to its real
   // outcome by an in-memory onSettled callback that doesn't survive a restart.
@@ -251,19 +114,7 @@ export function getSettings(): AppSettings {
     key: string
     value: string
   }[]
-  const stored: Record<string, unknown> = {}
-  for (const r of rows) {
-    try {
-      stored[r.key] = JSON.parse(r.value)
-    } catch {
-      /* skip bad rows */
-    }
-  }
-  const merged = { ...SETTINGS_DEFAULTS, ...stored }
-  // Migrate the removed 'bruh' sound (dropped with its bundled mp3) to the
-  // default so upgraded users aren't left with a silent, unrecognised cue.
-  if (merged.doneSound === 'bruh') merged.doneSound = SETTINGS_DEFAULTS.doneSound
-  return merged
+  return mergeStoredSettings(rows, SETTINGS_DEFAULTS)
 }
 
 export function setSettings(patch: Partial<AppSettings>): AppSettings {
@@ -381,6 +232,27 @@ export function removeProject(id: number): void {
   db.prepare('DELETE FROM projects WHERE id = ?').run(id)
 }
 
+// ── project secrets (encrypted; see env/secrets.ts) ──────────────────
+// Storage only — these store/return ciphertext. Encryption lives in
+// env/secrets.ts so the plaintext never reaches the DB layer.
+
+export function upsertSecret(projectId: number, key: string, valueEnc: string): void {
+  db.prepare(
+    `INSERT INTO project_secrets (project_id, key, value_enc, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(project_id, key) DO UPDATE SET value_enc = excluded.value_enc`
+  ).run(projectId, key, valueEnc, Date.now())
+}
+
+export function listSecretRows(projectId: number): { key: string; value_enc: string }[] {
+  return db
+    .prepare('SELECT key, value_enc FROM project_secrets WHERE project_id = ? ORDER BY key')
+    .all(projectId) as { key: string; value_enc: string }[]
+}
+
+export function deleteSecret(projectId: number, key: string): void {
+  db.prepare('DELETE FROM project_secrets WHERE project_id = ? AND key = ?').run(projectId, key)
+}
+
 // ── agents ───────────────────────────────────────────────────────────
 
 interface AgentRow {
@@ -490,6 +362,13 @@ export function updateAgentProgress(id: string, progress: string): void {
 
 export function updateAgentDiffStat(id: string, add: number, del: number): void {
   db.prepare('UPDATE agents SET additions = ?, deletions = ? WHERE id = ?').run(add, del, id)
+}
+
+/** Rename a conversation (#115). Trims; ignores an empty title. */
+export function renameAgent(id: string, title: string): void {
+  const t = title.trim()
+  if (!t) return
+  db.prepare('UPDATE agents SET title = ?, updated_at = ? WHERE id = ?').run(t, Date.now(), id)
 }
 
 export function removeAgent(id: string): void {

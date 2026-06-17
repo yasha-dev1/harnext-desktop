@@ -1,6 +1,6 @@
 ---
 name: qa-sweep
-description: Exhaustively QA-test the harnext-desktop Electron app to find functional bugs and UI/UX issues. Launches the real app with a CDP remote-debugging port, drives the actual renderer through the chrome-devtools MCP (clicking, typing, navigating across onboarding, projects, agents, goal mode, loops, settings, worktree diffs), watches console + network for errors, captures screenshots, and writes a structured bug/UX report. Use when asked to "test the app", "find bugs", "do a QA pass", "check everything works", "hunt for UX issues", or verify the whole app end-to-end (broader than the built-in `verify`/`run` skills, which target one change).
+description: Exhaustively QA-test the harnext-desktop Electron app to find functional bugs and UI/UX issues. Launches the real app with a CDP remote-debugging port, drives the actual renderer through the chrome-devtools MCP (clicking, typing, navigating across onboarding, projects, agents, goal mode, loops, settings, worktree diffs, image attachments, reasoning-effort selection, branch switching, steering a running agent, resuming an ended conversation, base-branch selection, and the MCP connector), watches console + network for errors, captures screenshots, and writes a structured bug/UX report. Use when asked to "test the app", "find bugs", "do a QA pass", "check everything works", "hunt for UX issues", or verify the whole app end-to-end (broader than the built-in `verify`/`run` skills, which target one change).
 ---
 
 # QA Sweep — drive the app, find bugs & UX issues

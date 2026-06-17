@@ -15,9 +15,11 @@ import type {
   SandboxInfo,
   StartAgentInput,
   TimelineItem,
+  UpdateInfo,
   WorktreeDiff
 } from '@shared/types'
 import { playSound } from '../lib/sounds'
+import { pushHistory } from '../lib/composer-history'
 
 function mergeTimeline(fromDb: TimelineItem[], live: TimelineItem[]): TimelineItem[] {
   const seen = new Set(fromDb.map((t) => `${t.kind}:${t.seq}`))
@@ -54,8 +56,25 @@ interface AppStore {
   disconnectContextEngine: () => Promise<void>
   setContextEngineUrl: (url: string) => Promise<void>
 
+  /**
+   * Unsent composer text, keyed so it survives route changes (#132): the
+   * new-agent Compose box is keyed `project:<id>`, each conversation's
+   * follow-up box `agent:<id>`. Cleared on successful send.
+   */
+  composerDrafts: Record<string, string>
+  setDraft: (key: string, text: string) => void
+  clearDraft: (key: string) => void
+
+  /** Sent-prompt history per composer surface, for shell-style ↑/↓ recall (#133). */
+  promptHistory: Record<string, string[]>
+  pushPromptHistory: (key: string, text: string) => void
+
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
+  /** Result of the GitHub-release update check (#162/#125); null until checked. */
+  update: UpdateInfo | null
+  /** Run the (best-effort) update check once and cache it in the store. */
+  checkUpdate: () => Promise<void>
   loadProviderModels: (providerId: string) => Promise<void>
 
   loadProjects: () => Promise<void>
@@ -85,6 +104,8 @@ interface AppStore {
   recallSteer: (agentId: string) => Promise<string | null>
   abortAgent: (agentId: string) => Promise<void>
   discardAgent: (agentId: string) => Promise<void>
+  /** Rename a conversation (#115); updates the store so the UI reflects it live. */
+  renameAgent: (agentId: string, title: string) => Promise<void>
   mergeAgent: (agentId: string) => Promise<void>
   ensureTimeline: (agentId: string) => Promise<void>
   loadDiff: (agentId: string) => Promise<void>
@@ -101,7 +122,9 @@ interface AppStore {
 
 export const useAppStore = create<AppStore>((set, get) => {
   // Context Engine device-flow phase updates (pending → connected/error).
-  window.api.contextEngine.onEvent((s) => set({ contextEngine: s }))
+  // Optional-chained so the store stays importable under test bridges that
+  // only stub the pieces they exercise (preload always provides this in prod).
+  window.api.contextEngine?.onEvent?.((s) => set({ contextEngine: s }))
   window.api.onAgentEvent((push: AgentPush) => {
     const state = get()
     switch (push.type) {
@@ -231,9 +254,38 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ contextEngine: await window.api.contextEngine.setBaseUrl(url) })
     },
 
+    composerDrafts: {},
+    promptHistory: {},
+    update: null,
+
+    setDraft: (key, text) => set((s) => ({ composerDrafts: { ...s.composerDrafts, [key]: text } })),
+    clearDraft: (key) =>
+      set((s) => {
+        if (!(key in s.composerDrafts)) return {}
+        const next = { ...s.composerDrafts }
+        delete next[key]
+        return { composerDrafts: next }
+      }),
+
+    pushPromptHistory: (key, text) =>
+      set((s) => ({
+        promptHistory: { ...s.promptHistory, [key]: pushHistory(s.promptHistory[key] ?? [], text) }
+      })),
+
     loadSettings: async () => {
       const settings = await window.api.settings.get()
       set({ settings })
+    },
+
+    // Best-effort: a missing bridge (or a failed/throwing check) leaves
+    // `update` null so neither the popup nor the badge ever shows.
+    checkUpdate: async () => {
+      try {
+        const res = await window.api.checkForUpdate?.()
+        if (res) set({ update: res })
+      } catch {
+        /* ignore — update checks never block the app */
+      }
     },
 
     saveSettings: async (patch) => {
@@ -352,6 +404,15 @@ export const useAppStore = create<AppStore>((set, get) => {
       const agent = get().agents[agentId]
       await window.api.agents.discard(agentId)
       if (agent) await get().loadAgents(agent.projectId)
+    },
+
+    renameAgent: async (agentId, title) => {
+      const t = title.trim()
+      const agent = get().agents[agentId]
+      if (!t || !agent || t === agent.title) return
+      await window.api.agents.rename(agentId, t)
+      // Update locally so the sidebar + header reflect it immediately.
+      set((state) => ({ agents: { ...state.agents, [agentId]: { ...agent, title: t } } }))
     },
 
     mergeAgent: async (agentId) => {

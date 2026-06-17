@@ -55,6 +55,12 @@ export interface EnvOverrides {
   workspaceService?: string
   /** Force which exposed service the explorer opens by default. */
   primaryService?: string
+  /**
+   * Env-file the sandbox feeds compose via `--env-file`, so `${VAR}` interpolates.
+   * Absolute, or relative to the project root; resolved against the MAIN checkout
+   * (never the worktree). Unset → fall back to `.env` in the main checkout if present.
+   */
+  envFile?: string
 }
 
 export interface ProjectEnvConfig {
@@ -80,6 +86,17 @@ export interface ProjectEnvConfig {
   detectedAt: number
   /** user-specified config that overrides detection (compose file, workspace, preview) */
   overrides?: EnvOverrides
+}
+
+/**
+ * Per-project secret store state, surfaced to the renderer. Only secret NAMES
+ * ever cross the IPC boundary — values stay encrypted in the main process.
+ */
+export interface ProjectSecretsInfo {
+  /** OS keychain (Electron safeStorage) usable — false → storing is refused. */
+  available: boolean
+  /** Stored secret names, sorted. */
+  keys: string[]
 }
 
 export interface DockerStatus {
@@ -396,6 +413,18 @@ export interface McpServerRow {
   config: McpServerConfig
 }
 
+/** Result of an auto-update check against GitHub releases (#162/#125). */
+export interface UpdateInfo {
+  /** The running app version. */
+  current: string
+  /** The latest release tag, or null if the check failed / found nothing. */
+  latest: string | null
+  /** The release page URL, for a one-click "view/update" action. */
+  url: string | null
+  /** True when `latest` is strictly newer than `current`. */
+  isUpdate: boolean
+}
+
 // ── renderer API ─────────────────────────────────────────────────────
 export interface DesktopApi {
   win: {
@@ -418,8 +447,12 @@ export interface DesktopApi {
   }
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>
+  /** Check GitHub releases for a newer app version (#162/#125). */
+  checkForUpdate(): Promise<UpdateInfo>
   /** Pick an audio file (returns its absolute path) for the custom "done" sound. */
   pickAudioFile(): Promise<string | null>
+  /** Pick an env-file (returns its absolute path) to point the sandbox at. */
+  pickEnvFile(): Promise<string | null>
   /** Read a local audio file as a data URL so the renderer can play it. */
   readSound(path: string): Promise<string | null>
   settings: {
@@ -455,6 +488,15 @@ export interface DesktopApi {
     setEnvConfig(id: number, patch: Partial<ProjectEnvConfig>): Promise<Project>
     /** Set user overrides (compose file / workspace / preview service) and re-detect. */
     setEnvOverrides(id: number, patch: EnvOverrides): Promise<Project>
+    /** Per-project encrypted secret store: keychain availability + stored names. */
+    secrets(id: number): Promise<ProjectSecretsInfo>
+    /** Encrypt and store one secret; throws if the keychain is unavailable. */
+    setSecret(id: number, key: string, value: string): Promise<ProjectSecretsInfo>
+    /** Parse pasted KEY=value text and store each secret encrypted. */
+    setSecretsBulk(id: number, text: string): Promise<ProjectSecretsInfo>
+    removeSecret(id: number, key: string): Promise<ProjectSecretsInfo>
+    /** Import KEY=value pairs from an env-file (default: `.env` in the project root). */
+    importSecretsFromEnv(id: number, path?: string): Promise<ProjectSecretsInfo>
   }
   agents: {
     list(projectId: number): Promise<AgentMeta[]>
@@ -472,6 +514,8 @@ export interface DesktopApi {
     suggestPR(agentId: string): Promise<{ title: string; base: string; body: string }>
     openPR(agentId: string, opts: { base?: string; title?: string; body?: string }): Promise<string>
     discard(agentId: string): Promise<void>
+    /** Rename a conversation (#115). */
+    rename(agentId: string, title: string): Promise<void>
     openEditor(agentId: string): Promise<void>
     stopAll(): Promise<void>
     /** Current Docker sandbox state for an agent (forwarded ports, status). */

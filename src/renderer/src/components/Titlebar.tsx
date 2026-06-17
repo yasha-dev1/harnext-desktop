@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import type { BranchList, Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { projectColor, projectMark } from '../lib/ui'
+import { filterBranches } from '../lib/branch-filter'
 import { Icon, Logo } from './icons'
 import { Popover } from './Popover'
 
@@ -11,12 +12,15 @@ interface TitlebarProps {
   projects: Project[]
   current: Project | null
   settingsActive: boolean
+  /** Show the "update available" dot on the Settings entry (#125). */
+  updateAvailable?: boolean
 }
 
 export default function Titlebar({
   projects,
   current,
-  settingsActive
+  settingsActive,
+  updateAvailable = false
 }: TitlebarProps): JSX.Element {
   const [menu, setMenu] = useState<'proj' | 'branch' | null>(null)
   const projChipRef = useRef<HTMLButtonElement>(null)
@@ -25,6 +29,7 @@ export default function Titlebar({
   const checkoutBranch = useAppStore((s) => s.checkoutBranch)
   const [branches, setBranches] = useState<BranchList | null>(null)
   const [switching, setSwitching] = useState<string | null>(null)
+  const [branchQuery, setBranchQuery] = useState('')
 
   const color = current ? projectColor(current) : '#666'
   const mark = current ? projectMark(current) : '—'
@@ -33,6 +38,7 @@ export default function Titlebar({
 
   const openBranchMenu = (): void => {
     setMenu((m) => (m === 'branch' ? null : 'branch'))
+    setBranchQuery('') // start each open with an empty filter
     if (current?.isGit) {
       setBranches(null) // show "Fetching…" until the (fetch + list) resolves
       void window.api.projects.branches(current.id).then(setBranches)
@@ -51,6 +57,7 @@ export default function Titlebar({
   }
 
   const branchItems = [...(branches?.local ?? []), ...(branches?.remote ?? [])]
+  const filteredBranches = filterBranches(branchItems, branchQuery)
 
   return (
     <div className="titlebar">
@@ -92,37 +99,54 @@ export default function Titlebar({
               className="tb-pop tb-pop-branch"
             >
               <div className="tb-pop-lbl">Switch branch</div>
+              {branches && branchItems.length > 0 && (
+                <div className="tb-pop-search">
+                  <Icon.search size={13} />
+                  <input
+                    autoFocus
+                    value={branchQuery}
+                    placeholder="Search branches…"
+                    aria-label="Search branches"
+                    onChange={(e) => setBranchQuery(e.target.value)}
+                  />
+                </div>
+              )}
               {!branches && <div className="tb-pop-msg">Fetching branches…</div>}
               {branches && branchItems.length === 0 && (
                 <div className="tb-pop-msg">No branches found.</div>
               )}
-              {branchItems.map((b) => {
-                const isActive = (current.activeBranch ?? current.branch) === b
-                return (
-                  <button
-                    key={b}
-                    className={'tb-pop-item' + (isActive ? ' active' : '')}
-                    disabled={switching !== null}
-                    onClick={() => void pickBranch(b)}
-                  >
-                    <span className="tb-branch-ic">
-                      <Icon.branch size={13} />
-                    </span>
-                    <span className="tb-pop-nm mono">{b}</span>
-                    {switching === b ? (
-                      <span className="tick spin">
-                        <Icon.loop size={13} />
+              {branches && branchItems.length > 0 && filteredBranches.length === 0 && (
+                <div className="tb-pop-msg">No branches match “{branchQuery}”.</div>
+              )}
+              <div className="tb-pop-list">
+                {filteredBranches.map((b) => {
+                  const isActive = (current.activeBranch ?? current.branch) === b
+                  return (
+                    <button
+                      key={b}
+                      className={'tb-pop-item' + (isActive ? ' active' : '')}
+                      disabled={switching !== null}
+                      onClick={() => void pickBranch(b)}
+                    >
+                      <span className="tb-branch-ic">
+                        <Icon.branch size={13} />
                       </span>
-                    ) : (
-                      isActive && (
-                        <span className="tick">
-                          <Icon.check size={14} />
+                      <span className="tb-pop-nm mono">{b}</span>
+                      {switching === b ? (
+                        <span className="tick spin">
+                          <Icon.loop size={13} />
                         </span>
-                      )
-                    )}
-                  </button>
-                )
-              })}
+                      ) : (
+                        isActive && (
+                          <span className="tick">
+                            <Icon.check size={14} />
+                          </span>
+                        )
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             </Popover>
           </span>
         )}
@@ -182,11 +206,12 @@ export default function Titlebar({
       <div className="tb-tools">
         <button
           className={'tb-icon' + (settingsActive ? ' active' : '')}
-          title="Settings"
+          title={updateAvailable ? 'Settings — update available' : 'Settings'}
           onClick={() => current && navigate(`/project/${current.id}/settings`)}
           disabled={!current}
         >
           <Icon.settings size={16} />
+          {updateAvailable && <span className="tb-badge" aria-label="Update available" />}
         </button>
       </div>
       <div className="tb-wc">

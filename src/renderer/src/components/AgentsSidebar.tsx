@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useMatch, useNavigate, useParams } from 'react-router-dom'
 import type { JSX } from 'react'
 import type { AgentMeta, Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { DOT_COLOR, STATUS, projectColor, projectMark, userInitials } from '../lib/ui'
+import { filterConversations } from '../lib/conversation-filter'
 import { Icon } from './icons'
 
 function AgentCard({
@@ -100,9 +102,16 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
     })
   }
 
+  const [query, setQuery] = useState('')
   const list = agentIds.map((id) => agents[id]).filter(Boolean)
-  const running = list.filter((a) => ['running', 'review', 'input', 'paused'].includes(a.status))
-  const finished = list.filter((a) => ['done', 'failed'].includes(a.status))
+  // Filter by title first (#116), then keep the running/finished grouping.
+  const filtered = filterConversations(list, query)
+  const running = filtered.filter((a) =>
+    ['running', 'review', 'input', 'paused'].includes(a.status)
+  )
+  const finished = filtered.filter((a) => ['done', 'failed'].includes(a.status))
+  const searching = query.trim().length > 0
+  const noMatches = searching && running.length === 0 && finished.length === 0
   const color = projectColor(project)
 
   return (
@@ -157,11 +166,27 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
           <Icon.chevronR size={14} />
         </button>
 
-        <div className="aside-sect">
-          <span>Active</span>
-          {running.length > 0 && <span className="count">{running.length}</span>}
-        </div>
-        {running.length === 0 && (
+        {list.length > 0 && (
+          <div className="aside-search">
+            <Icon.search size={13} />
+            <input
+              value={query}
+              placeholder="Search conversations…"
+              aria-label="Search conversations"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
+
+        {noMatches && <div className="aside-empty">No conversations match “{query}”.</div>}
+
+        {(running.length > 0 || !searching) && (
+          <div className="aside-sect">
+            <span>Active</span>
+            {running.length > 0 && <span className="count">{running.length}</span>}
+          </div>
+        )}
+        {running.length === 0 && !searching && (
           <div className="aside-empty">
             No active agents.
             <br />
@@ -190,6 +215,7 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
                 agent={a}
                 active={agentId === a.id}
                 onClick={() => navigate(`/project/${project.id}/agent/${a.id}`)}
+                onDiscard={() => handleDiscard(a)}
               />
             ))}
           </>
