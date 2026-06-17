@@ -7,6 +7,7 @@ import { initDb } from './db'
 import { registerIpc } from './ipc'
 import { LoopScheduler } from './loops'
 import { createNavigationHandler } from './navigation'
+import { augmentProcessPath } from './env/host-path'
 import icon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -66,6 +67,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // GUI-launched apps inherit a minimal PATH; restore the user's real PATH so
+  // CLIs like `gh`/`git`/`docker` are found even outside a terminal (#195).
+  augmentProcessPath()
   electronApp.setAppUserModelId('dev.harnext.desktop')
 
   app.on('browser-window-created', (_, window) => {
