@@ -21,12 +21,28 @@ import { detectProjectEnv, emptyEnvConfig, getDockerStatus } from './env/detect'
 import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
+import {
+  cancelContextEngineLogin,
+  disconnectContextEngine,
+  getContextEngineStatus,
+  setContextEngineBaseUrl,
+  setContextEngineEmit,
+  startContextEngineLogin
+} from './contextEngine'
 
 function getWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
 }
 
 export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): void {
+  // Context Engine device-flow phase events → renderer.
+  setContextEngineEmit((s) => getWindow()?.webContents.send('contextEngine:event', s))
+  ipcMain.handle('contextEngine:status', () => getContextEngineStatus())
+  ipcMain.handle('contextEngine:startLogin', () => startContextEngineLogin())
+  ipcMain.handle('contextEngine:cancelLogin', () => cancelContextEngineLogin())
+  ipcMain.handle('contextEngine:disconnect', () => disconnectContextEngine())
+  ipcMain.handle('contextEngine:setBaseUrl', (_e, url: string) => setContextEngineBaseUrl(url))
+
   // window controls (frameless titlebar)
   ipcMain.on('win:minimize', () => getWindow()?.minimize())
   ipcMain.on('win:maximize', () => {

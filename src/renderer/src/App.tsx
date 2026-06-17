@@ -13,6 +13,7 @@ import Settings from './views/Settings'
 import LoopsHome from './views/LoopsHome'
 import LoopDetail from './views/LoopDetail'
 import NewLoopForm from './views/NewLoopForm'
+import ContextEngine from './views/ContextEngine'
 
 // Renders the in-app file/folder picker whenever a `pickPath()` call is pending.
 function GlobalFilePicker(): JSX.Element | null {
@@ -56,6 +57,7 @@ function Shell(): JSX.Element {
           <Route index element={<Compose />} />
           <Route path="agent/:agentId" element={<AgentDetail />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="context" element={<ContextEngine />} />
           <Route path="loops" element={<LoopsHome />} />
           <Route path="loops/new" element={<NewLoopForm />} />
           <Route path="loops/:loopId" element={<LoopDetail />} />

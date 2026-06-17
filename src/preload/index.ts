@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AgentPush,
   AppSettings,
+  ContextEngineStatus,
   DesktopApi,
   EnvOverrides,
   LoopInput,
@@ -88,6 +89,18 @@ const api: DesktopApi = {
     toggle: (id: number) => ipcRenderer.invoke('loops:toggle', id),
     runNow: (id: number) => ipcRenderer.invoke('loops:runNow', id),
     runs: (loopId: number) => ipcRenderer.invoke('loops:runs', loopId)
+  },
+  contextEngine: {
+    status: () => ipcRenderer.invoke('contextEngine:status'),
+    startLogin: () => ipcRenderer.invoke('contextEngine:startLogin'),
+    cancelLogin: () => ipcRenderer.invoke('contextEngine:cancelLogin'),
+    disconnect: () => ipcRenderer.invoke('contextEngine:disconnect'),
+    setBaseUrl: (url: string) => ipcRenderer.invoke('contextEngine:setBaseUrl', url),
+    onEvent: (cb: (s: ContextEngineStatus) => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, s: ContextEngineStatus): void => cb(s)
+      ipcRenderer.on('contextEngine:event', listener)
+      return () => ipcRenderer.removeListener('contextEngine:event', listener)
+    }
   },
   onAgentEvent: (cb: (e: AgentPush) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, push: AgentPush): void => cb(push)

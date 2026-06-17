@@ -3,6 +3,7 @@ import type {
   AgentMeta,
   AgentPush,
   AppSettings,
+  ContextEngineStatus,
   DockerStatus,
   LoopInput,
   LoopMeta,
@@ -44,6 +45,14 @@ interface AppStore {
 
   /** Live model catalog per provider id, fetched lazily and cached. */
   providerModels: Record<string, string[]>
+
+  // Context Engine (RFC 8628 device-flow auth)
+  contextEngine: ContextEngineStatus | null
+  loadContextEngine: () => Promise<void>
+  startContextEngineLogin: () => Promise<void>
+  cancelContextEngineLogin: () => Promise<void>
+  disconnectContextEngine: () => Promise<void>
+  setContextEngineUrl: (url: string) => Promise<void>
 
   loadSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
@@ -91,6 +100,8 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set, get) => {
+  // Context Engine device-flow phase updates (pending → connected/error).
+  window.api.contextEngine.onEvent((s) => set({ contextEngine: s }))
   window.api.onAgentEvent((push: AgentPush) => {
     const state = get()
     switch (push.type) {
@@ -201,6 +212,24 @@ export const useAppStore = create<AppStore>((set, get) => {
     undeliveredSteers: {},
     loopsByProject: {},
     loopRuns: {},
+    contextEngine: null,
+
+    loadContextEngine: async () => {
+      set({ contextEngine: await window.api.contextEngine.status() })
+    },
+    startContextEngineLogin: async () => {
+      // Phase updates (pending → connected/error) arrive via the onEvent stream.
+      await window.api.contextEngine.startLogin()
+    },
+    cancelContextEngineLogin: async () => {
+      await window.api.contextEngine.cancelLogin()
+    },
+    disconnectContextEngine: async () => {
+      await window.api.contextEngine.disconnect()
+    },
+    setContextEngineUrl: async (url) => {
+      set({ contextEngine: await window.api.contextEngine.setBaseUrl(url) })
+    },
 
     loadSettings: async () => {
       const settings = await window.api.settings.get()

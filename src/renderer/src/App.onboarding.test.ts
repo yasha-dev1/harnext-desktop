@@ -33,8 +33,9 @@ function installDomStub(): void {
     scrollRestoration: 'auto'
   }
   const win: Record<string, unknown> = {
-    // The store wires window.api.onAgentEvent at module-eval time.
-    api: { onAgentEvent: () => noop },
+    // The store wires window.api.onAgentEvent and
+    // window.api.contextEngine.onEvent at module-eval time.
+    api: { onAgentEvent: () => noop, contextEngine: { onEvent: () => noop } },
     location,
     history,
     addEventListener: noop,
