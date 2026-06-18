@@ -5,6 +5,7 @@ import type { AgentMeta, Project } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { DOT_COLOR, STATUS, projectColor, projectMark, userInitials } from '../lib/ui'
 import { filterConversations } from '../lib/conversation-filter'
+import { shouldShowBadge } from '../lib/update-badge'
 import { Icon } from './icons'
 
 function AgentCard({
@@ -93,6 +94,9 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
   const loops = useAppStore((s) => s.loopsByProject[project.id]) ?? []
   const discardAgent = useAppStore((s) => s.discardAgent)
   const displayName = useAppStore((s) => s.settings?.displayName)?.trim() || 'You'
+  // Mirror the titlebar's "update available" badge on this settings entry too, so
+  // both ways into Settings surface a pending update (#125).
+  const updateAvailable = shouldShowBadge(useAppStore((s) => s.update))
 
   const handleDiscard = (a: AgentMeta): void => {
     if (!confirm('Discard this agent? Its worktree and branch are deleted.')) return
@@ -225,10 +229,12 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
       <div className="aside-foot">
         <button
           className={'aside-link' + (settingsMatch ? ' active' : '')}
+          title={updateAvailable ? 'Settings — update available' : 'Settings'}
           onClick={() => navigate(`/project/${project.id}/settings`)}
         >
           <Icon.settings size={17} />
           <span>Settings</span>
+          {updateAvailable && <span className="aside-badge" aria-label="Update available" />}
         </button>
         <button
           className="aside-user"
