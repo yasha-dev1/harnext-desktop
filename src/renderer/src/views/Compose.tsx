@@ -5,6 +5,8 @@ import type { BranchList, PermissionMode, ProviderOption } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
 import { ModelPicker } from '../components/ModelPicker'
+import { toPickerGroups, canonicalRef } from '../lib/model-picker'
+import { parseModelRef } from '@shared/model-ref'
 import { EffortPicker } from '../components/EffortPicker'
 import { AttachButton, AttachmentBar } from '../components/Attachments'
 import { useAttachments } from '../lib/attachments'
@@ -71,20 +73,37 @@ export default function Compose(): JSX.Element {
     if (project?.isGit) void window.api.projects.branches(projectId).then(setBranches)
   }, [projectId, project?.isGit])
 
-  const provider = settings?.provider
+  // Load every connected provider's models so the pickers can list them all (#103).
   useEffect(() => {
-    if (provider) void loadProviderModels(provider)
-  }, [provider, loadProviderModels])
+    providers.forEach((p) => {
+      if (p.authenticated) void loadProviderModels(p.id)
+    })
+  }, [providers, loadProviderModels])
 
   if (!project || !settings) return <div />
 
-  const curated = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
-  const models = providerModels[settings.provider] ?? curated
+  // Cross-provider model catalog for the pickers (#103): one group per connected
+  // provider, each model carried as a `<provider>:<model>` ref.
+  const groups = toPickerGroups(
+    providers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      authenticated: p.authenticated,
+      models: providerModels[p.id] ?? p.models
+    }))
+  )
+  const providerIds = providers.map((p) => p.id)
+  const refOf = (v: string): string => canonicalRef(v, providerIds, settings.provider)
   const isGoal = /(^|\s)\/goal\b/i.test(text)
   // Warn when the model that will receive the prompt can't read images, so an
   // attachment isn't silently dropped (#131). In goal mode the planner (smart)
-  // gets the first prompt; otherwise it's the single model.
-  const nonVisionModel = imagesWouldBeDropped(isGoal ? settings.smart : settings.model)
+  // gets the first prompt; otherwise it's the single model. Resolve the ref to its
+  // bare model id first so the vision check sees the model, not the `provider:` ref.
+  const promptModel = parseModelRef(isGoal ? settings.smart : settings.model, {
+    providers: providerIds,
+    fallback: settings.provider
+  }).modelId
+  const nonVisionModel = imagesWouldBeDropped(promptModel)
 
   // Base-branch picker: default to the project's current branch; the options are
   // the fetched local + remote branches (current first), deduped.
@@ -191,8 +210,8 @@ export default function Compose(): JSX.Element {
                 </span>
                 <ModelPicker
                   mono
-                  value={settings.smart}
-                  models={models}
+                  value={refOf(settings.smart)}
+                  groups={groups}
                   onChange={(v) => void saveSettings({ smart: v })}
                 />
                 <span className="ctl" title="Executor model — writes the code">
@@ -201,16 +220,16 @@ export default function Compose(): JSX.Element {
                 </span>
                 <ModelPicker
                   mono
-                  value={settings.executor}
-                  models={models}
+                  value={refOf(settings.executor)}
+                  groups={groups}
                   onChange={(v) => void saveSettings({ executor: v })}
                 />
               </>
             ) : (
               <ModelPicker
                 mono
-                value={settings.model}
-                models={models}
+                value={refOf(settings.model)}
+                groups={groups}
                 onChange={(v) => void saveSettings({ model: v })}
               />
             )}
