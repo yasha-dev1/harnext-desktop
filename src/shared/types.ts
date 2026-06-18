@@ -243,6 +243,22 @@ export interface LoopRun {
   createdAt: number
 }
 
+// ── Context Engine (RFC 8628 device-flow auth) ───────────────────────
+export interface ContextEngineStatus {
+  /** Ingest API base URL the device flow talks to. */
+  baseUrl: string
+  connected: boolean
+  /** The endpoint the active grant is for (once connected). */
+  endpoint?: string
+  /** Org/project granted at approval, decoded from the access token if present. */
+  orgId?: string
+  /** Shown while waiting for the user to approve in the browser. */
+  userCode?: string
+  verificationUri?: string
+  phase: 'idle' | 'pending' | 'connected' | 'error'
+  error?: string
+}
+
 // ── settings ─────────────────────────────────────────────────────────
 /**
  * Reasoning effort passed to the model. Mirrors `@harnext/core`'s `ThinkingLevel`
@@ -272,6 +288,8 @@ export interface AppSettings {
   evalLoop: boolean
   /** Where per-agent git worktrees are created. Default: ~/.harnext-desktop/worktrees */
   worktreeRoot: string
+  /** Harnext Context Engine ingest API base URL (RFC 8628 device-flow auth). */
+  contextEngineUrl: string
 }
 
 export interface ProviderOption {
@@ -511,6 +529,16 @@ export interface DesktopApi {
     toggle(id: number): Promise<LoopMeta>
     runNow(id: number): Promise<void>
     runs(loopId: number): Promise<LoopRun[]>
+  }
+  /** Harnext Context Engine — RFC 8628 device-flow auth. */
+  contextEngine: {
+    status(): Promise<ContextEngineStatus>
+    /** Begin the device flow (opens the browser; phases arrive via onEvent). */
+    startLogin(): Promise<void>
+    cancelLogin(): Promise<void>
+    disconnect(): Promise<void>
+    setBaseUrl(url: string): Promise<ContextEngineStatus>
+    onEvent(cb: (s: ContextEngineStatus) => void): () => void
   }
   onAgentEvent(cb: (e: AgentPush) => void): () => void
 }

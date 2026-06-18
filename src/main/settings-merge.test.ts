@@ -18,7 +18,8 @@ const DEFAULTS: AppSettings = {
   worktreeRoot: '/home/me/.harnext-desktop/worktrees',
   soundOnDone: true,
   doneSound: 'chime',
-  customSoundPath: ''
+  customSoundPath: '',
+  contextEngineUrl: 'https://app.harnext.dev/api'
 }
 const row = (key: string, value: unknown): { key: string; value: string } => ({
   key,
