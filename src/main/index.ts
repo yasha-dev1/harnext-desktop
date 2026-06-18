@@ -7,6 +7,7 @@ import { initDb } from './db'
 import { registerIpc } from './ipc'
 import { LoopScheduler } from './loops'
 import { createNavigationHandler } from './navigation'
+import { applyShellPath } from './shell-path'
 import icon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -67,6 +68,11 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.harnext.desktop')
+
+  // Recover the user's real PATH before any agent spawns: a dock/launcher start
+  // strips it down to a minimal system PATH, so tools like `gh` go missing even
+  // though they're installed (#195). No-op on Windows / when launched from a shell.
+  applyShellPath({ platform: process.platform, env: process.env })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
