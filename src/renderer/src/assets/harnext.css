@@ -814,6 +814,15 @@ html[data-density='compact'] .body {
   background: var(--bg-2);
   color: var(--tx-0);
 }
+/* "Update available" dot on the sidebar Settings entry — pushed to the far end
+   of the row, mirroring the titlebar badge (#125). */
+.aside-badge {
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
 .aside-link.active {
   background: var(--p-soft);
   color: var(--p-text);
