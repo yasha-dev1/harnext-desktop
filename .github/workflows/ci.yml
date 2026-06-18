@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -104,7 +104,7 @@ jobs:
           # Public → github.token works; private → set a HARNEXT_TOKEN PAT secret.
           token: ${{ secrets.HARNEXT_TOKEN || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
