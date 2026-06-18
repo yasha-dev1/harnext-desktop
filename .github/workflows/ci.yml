@@ -69,6 +69,14 @@ jobs:
       - name: Unit tests + coverage
         run: npm run test:coverage
 
+      # Surface known vulnerabilities in dependencies — advisory only (`|| true`),
+      # so it never blocks a PR, but the findings show up in the CI log. Runs once
+      # on ubuntu. A named dependency-hygiene gap in #138; Dependabot (see
+      # .github/dependabot.yml) keeps them patched.
+      - name: Audit dependencies (advisory)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --audit-level=high || true
+
   # The `lint-test` job above runs against a *stub* @harnext/core, which is enough
   # for lint / renderer-typecheck / unit tests but CANNOT typecheck the main process
   # (it imports core's real types) or run `electron-vite build`. This job closes

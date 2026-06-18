@@ -1,0 +1,25 @@
+# Dependency hygiene (#138 §2): let Dependabot keep deps + CI actions current and
+# flag vulnerable packages. Grouped + capped so it informs without flooding review.
+version: 2
+updates:
+  # npm dependencies. Routine minor/patch bumps are grouped into a single weekly
+  # PR to cut noise; majors arrive as individual PRs so they get a careful review.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the GitHub Actions used by ci.yml / release.yml pinned and up to date.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
