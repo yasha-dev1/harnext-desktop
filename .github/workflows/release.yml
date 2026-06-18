@@ -82,7 +82,25 @@ jobs:
       - name: Build installers (no publish)
         working-directory: harnext-desktop
         shell: bash
-        run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          # macOS code-signing. CSC_LINK is electron-builder's *shared* cert env
+          # var, so it MUST be scoped to the mac job — otherwise the Windows runner
+          # would try to sign with the macOS .p12. Empty elsewhere ⇒ no signing
+          # attempted (electron-builder just warns and ships an unsigned build).
+          CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.CSC_KEY_PASSWORD || '' }}
+          # Notarization credentials (read by electron-builder only for mac).
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Notarize only when the mac build actually has the Apple credentials, so
+          # tagging a release before those two secrets exist still succeeds (it
+          # signs but skips notarization) instead of hard-failing.
+          NOTARIZE: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+        run: |
+          EXTRA=()
+          if [ "$NOTARIZE" = "true" ]; then EXTRA+=(--config.mac.notarize=true); fi
+          npm run ${{ matrix.script }} -- --publish never "${EXTRA[@]}"
 
       # Each runner's installers (plus the auto-update *.yml / *.blockmap metadata)
       # land in harnext-desktop/dist. Hand them to the publish job as an artifact.
