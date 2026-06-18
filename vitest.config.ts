@@ -25,7 +25,19 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['src/shared/**', 'src/renderer/src/**']
+      // Include the main process too, so the growing main-process test suite
+      // actually counts toward coverage (#138 — it was silently excluded).
+      include: ['src/shared/**', 'src/renderer/src/**', 'src/main/**'],
+      // Ratcheting floor (#138): fail the build if coverage drops below today's
+      // baseline (~35% stmts / 33% branch / 32% func, dragged down by the big
+      // still-untested modules like db.ts/agent-manager.ts). Set a few points
+      // under current so normal variation doesn't flake; raise as coverage grows.
+      thresholds: {
+        statements: 33,
+        branches: 30,
+        functions: 29,
+        lines: 33
+      }
     }
   }
 })
