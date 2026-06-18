@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { join } from 'node:path'
 import { buildFsListing, type RawDirent } from './fs-listing'
 
 const dirent = (name: string, kind: 'dir' | 'file' | 'link'): RawDirent => ({
@@ -25,7 +26,9 @@ describe('buildFsListing', () => {
     const r = buildFsListing('/home/me', [dirent('notes.txt', 'file')], resolveIsDir)
     expect(r.entries[0]).toEqual({
       name: 'notes.txt',
-      path: '/home/me/notes.txt',
+      // buildFsListing joins with the platform separator (backslash on Windows),
+      // so derive the expected path the same way to stay cross-platform.
+      path: join('/home/me', 'notes.txt'),
       isDir: false,
       isSymlink: false
     })
