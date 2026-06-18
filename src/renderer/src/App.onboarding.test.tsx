@@ -19,6 +19,8 @@ import { render, screen, waitFor, act, cleanup } from '@testing-library/react'
 function installApiMock(): void {
   const api = {
     onAgentEvent: () => () => {},
+    // The store subscribes to CE phase updates at module-eval time (#111).
+    contextEngine: { onEvent: () => () => {} },
     settings: { get: vi.fn().mockResolvedValue({ onboarded: false, theme: 'dark' }) },
     projects: { list: vi.fn().mockResolvedValue([]) },
     // FilePicker browses the filesystem when the overlay opens.

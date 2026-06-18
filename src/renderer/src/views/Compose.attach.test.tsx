@@ -21,7 +21,8 @@ const baseSettings = {
   doneSound: 'chime',
   customSoundPath: '',
   evalLoop: true,
-  worktreeRoot: '/tmp/wt'
+  worktreeRoot: '/tmp/wt',
+  contextEngineUrl: 'https://app.harnext.dev/api'
 } as AppSettings
 const project = { id: 1, name: 'demo', path: '/tmp/demo', isGit: false, branch: 'main' } as Project
 

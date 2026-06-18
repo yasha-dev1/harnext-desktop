@@ -68,3 +68,60 @@ jobs:
 
       - name: Unit tests + coverage
         run: npm run test:coverage
+
+  # The `lint-test` job above runs against a *stub* @harnext/core, which is enough
+  # for lint / renderer-typecheck / unit tests but CANNOT typecheck the main process
+  # (it imports core's real types) or run `electron-vite build`. This job closes
+  # that gap (#138): it checks out + builds the real @harnext/core alongside (the
+  # same sibling-workspace pattern release.yml already uses) and runs `npm run
+  # build`, which is `npm run typecheck && electron-vite build` — so a type error or
+  # build break in the main process now fails CI instead of reaching `main`. Ubuntu
+  # only: tsc is deterministic across OSes and electron-vite build isn't packaging.
+  typecheck-build:
+    name: Typecheck (main + renderer) & build
+    runs-on: ubuntu-latest
+    steps:
+      # Check both repos out as siblings so the package.json's
+      # `file:../harnext/packages/core` dependency resolves.
+      - name: Checkout harnext-desktop
+        uses: actions/checkout@v4
+        with:
+          path: harnext-desktop
+
+      - name: Checkout @harnext/core
+        uses: actions/checkout@v4
+        with:
+          repository: QualityUnit/harnext
+          path: harnext
+          # Public → github.token works; private → set a HARNEXT_TOKEN PAT secret.
+          token: ${{ secrets.HARNEXT_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: harnext-desktop/package-lock.json
+
+      - name: Build @harnext/core
+        working-directory: harnext
+        run: |
+          npm ci
+          npm -w packages/core run build
+
+      # Pack @harnext/core and install the tarball so its transitive deps actually
+      # land in node_modules (a bare `file:` symlink leaves them in the sibling
+      # tree — #74). `--ignore-scripts` skips the better-sqlite3 native rebuild:
+      # electron-vite build externalizes the native addon, so typecheck + build
+      # don't need it.
+      - name: Install desktop dependencies (@harnext/core as a packed tarball)
+        working-directory: harnext-desktop
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          TARBALL=$(cd ../harnext/packages/core && npm pack --silent | tail -1)
+          npm install "../harnext/packages/core/$TARBALL" --ignore-scripts --no-audit --no-fund
+
+      # `npm run build` === `npm run typecheck && electron-vite build`, so this one
+      # step typechecks BOTH the main process and the renderer, then builds.
+      - name: Typecheck (node + web) & build
+        working-directory: harnext-desktop
+        run: npm run build

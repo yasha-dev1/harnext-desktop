@@ -84,8 +84,10 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
   const settingsMatch = useMatch('/project/:projectId/settings')
   const loopsMatch = useMatch('/project/:projectId/loops/*')
   const loopsRootMatch = useMatch('/project/:projectId/loops')
+  const contextMatch = useMatch('/project/:projectId/context')
   const homeMatch = useMatch({ path: '/project/:projectId', end: true })
 
+  const ceConnected = useAppStore((s) => s.contextEngine?.connected ?? false)
   const agentIds = useAppStore((s) => s.agentIdsByProject[project.id]) ?? []
   const agents = useAppStore((s) => s.agents)
   const loops = useAppStore((s) => s.loopsByProject[project.id]) ?? []
@@ -152,6 +154,15 @@ export default function AgentsSidebar({ project }: { project: Project }): JSX.El
           <Icon.loop size={16} />
           <span className="aside-menu-label">Loops</span>
           {loops.length > 0 && <span className="aside-menu-count">{loops.length}</span>}
+          <Icon.chevronR size={14} />
+        </button>
+        <button
+          className={'aside-menu' + (contextMatch ? ' active' : '')}
+          onClick={() => navigate(`/project/${project.id}/context`)}
+        >
+          <Icon.brain size={16} />
+          <span className="aside-menu-label">Context Engine</span>
+          {ceConnected && <span className="ce-dot" title="Connected" />}
           <Icon.chevronR size={14} />
         </button>
 

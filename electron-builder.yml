@@ -20,12 +20,18 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  hardenedRuntime: true # required by notarization; uses build/entitlements.mac.plist
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # Enabled by the release workflow via `--config.mac.notarize=true`, but only
+  # when the Apple credentials (APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID)
+  # are present as CI secrets. Left false here so dev builds and credential-less CI
+  # never attempt — and fail — notarization.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

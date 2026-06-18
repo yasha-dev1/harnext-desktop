@@ -14,6 +14,7 @@ import { canSubmitComposer } from '../lib/composer'
 import { imagesWouldBeDropped, NON_VISION_ATTACH_HINT } from '../lib/vision-models'
 import { projectDraftKey } from '../lib/draft-keys'
 import { navigateHistory, caretAtEdge } from '../lib/composer-history'
+import { refocusComposer } from '../lib/focus'
 
 // Stable reference so the `?? []` fallback doesn't churn the selector.
 const EMPTY_HISTORY: string[] = []
@@ -61,7 +62,11 @@ export default function Compose(): JSX.Element {
 
   useEffect(() => {
     void window.api.providers.list().then(setProviders)
-    taRef.current?.focus()
+    // Claim focus on the next frame so any modal that held focus (e.g. the
+    // delete-project dialog) is fully unmounted first; refocusComposer blurs
+    // before focusing to re-attach Electron's native text widget (#191).
+    const id = requestAnimationFrame(() => refocusComposer(taRef.current))
+    return () => cancelAnimationFrame(id)
   }, [])
 
   useEffect(() => {
@@ -300,7 +305,7 @@ export default function Compose(): JSX.Element {
                 className="quick"
                 onClick={() => {
                   setText(q.t)
-                  taRef.current?.focus()
+                  refocusComposer(taRef.current)
                 }}
               >
                 <Ic size={13} />
