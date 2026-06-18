@@ -13,7 +13,8 @@ import type {
 } from '@shared/types'
 import { useAppStore } from '../stores/useAppStore'
 import { Icon, type IconName } from '../components/icons'
-import { ModelPicker } from '../components/ModelPicker'
+import { ModelPicker, type ModelPickerGroup } from '../components/ModelPicker'
+import { toPickerGroups, canonicalRef } from '../lib/model-picker'
 import { EffortPicker } from '../components/EffortPicker'
 import { EditorLogo } from '../components/EditorLogo'
 import { SOUNDS, playSound } from '../lib/sounds'
@@ -93,16 +94,23 @@ const MODE_LABEL: Record<PermissionMode, string> = {
 
 const GOAL_BLOG_URL = 'https://www.harnext.dev/blog/goal-mode-evaluator-loop'
 
-function ModelsTab({
+export function ModelsTab({
   settings,
   save,
-  models
+  groups,
+  providerIds
 }: {
   settings: AppSettings
   save: (p: Partial<AppSettings>) => void
-  models: string[]
+  /** Cross-provider model catalog, grouped by provider (#103). */
+  groups: ModelPickerGroup[]
+  /** Connected provider ids — distinguishes a ref from a legacy bare id (#103). */
+  providerIds: string[]
 }): JSX.Element {
   const [advanced, setAdvanced] = useState(false)
+  // Show the stored selection (a bare legacy id or a ref) as a canonical ref so it
+  // highlights against the catalog; selecting any provider's model stores its ref.
+  const refOf = (v: string): string => canonicalRef(v, providerIds, settings.provider)
   return (
     <div className="set-stack">
       <div className="set-card">
@@ -114,9 +122,9 @@ function ModelsTab({
         <Row label="Default model" desc="The model harnext codes with when you start an agent.">
           <ModelPicker
             mono
-            value={settings.model}
+            value={refOf(settings.model)}
             onChange={(v) => save({ model: v })}
-            models={models}
+            groups={groups}
           />
         </Row>
         <Row
@@ -174,9 +182,9 @@ function ModelsTab({
             >
               <ModelPicker
                 mono
-                value={settings.smart}
+                value={refOf(settings.smart)}
                 onChange={(v) => save({ smart: v })}
-                models={models}
+                groups={groups}
               />
             </Row>
             <Row
@@ -185,9 +193,9 @@ function ModelsTab({
             >
               <ModelPicker
                 mono
-                value={settings.executor}
+                value={refOf(settings.executor)}
                 onChange={(v) => save({ executor: v })}
-                models={models}
+                groups={groups}
               />
             </Row>
             <Row
@@ -1189,15 +1197,27 @@ export default function Settings(): JSX.Element {
     void loadDockerStatus()
   }, [loadDockerStatus])
 
-  const provider = settings?.provider
+  // Load every connected provider's models, not just the active one, so the
+  // model pickers can list them all (#103).
   useEffect(() => {
-    if (provider) void loadProviderModels(provider)
-  }, [provider, loadProviderModels])
+    providers.forEach((p) => {
+      if (p.authenticated) void loadProviderModels(p.id)
+    })
+  }, [providers, loadProviderModels])
 
   if (!settings || !project) return <div />
   const save = (p: Partial<AppSettings>): void => void saveSettings(p)
-  const curated = providers.find((p) => p.id === settings.provider)?.models ?? [settings.model]
-  const models = providerModels[settings.provider] ?? curated
+  // Cross-provider catalog for the pickers: one group per connected provider,
+  // each model carried as a `<provider>:<model>` ref (#103).
+  const groups = toPickerGroups(
+    providers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      authenticated: p.authenticated,
+      models: providerModels[p.id] ?? p.models
+    }))
+  )
+  const providerIds = providers.map((p) => p.id)
 
   const TABS: { id: string; label: string; ic: IconName }[] = [
     { id: 'models', label: 'Models', ic: 'loop' },
@@ -1237,7 +1257,9 @@ export default function Settings(): JSX.Element {
           )
         })}
       </div>
-      {tab === 'models' && <ModelsTab settings={settings} save={save} models={models} />}
+      {tab === 'models' && (
+        <ModelsTab settings={settings} save={save} groups={groups} providerIds={providerIds} />
+      )}
       {tab === 'providers' && (
         <ProvidersTab
           settings={settings}
