@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { extname, join, dirname, resolve } from 'node:path'
+import { extname, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { removeProviderConfig, saveProviderConfig, saveProviderKey } from '@harnext/core'
 import type {
@@ -29,6 +29,7 @@ import {
 } from './env/secrets'
 import { currentBranch, fetchRemote, isGitRepo, listBranches, openBranchWorktree } from './git'
 import { checkForUpdate } from './updater/check'
+import { buildFsListing } from './fs-listing'
 import { LoopScheduler } from './loops'
 import { getProviderModels, listProviders, verifyProvider } from './providers'
 import {
@@ -101,25 +102,15 @@ export function registerIpc(manager: AgentManager, scheduler: LoopScheduler): vo
     try {
       const abs = resolve(dirPath)
       const dirents = readdirSync(abs, { withFileTypes: true })
-      const entries = dirents
-        .filter((d) => !d.name.startsWith('.')) // hide dotfiles by default
-        .map((d) => {
-          const full = join(abs, d.name)
-          const isSymlink = d.isSymbolicLink()
-          let isDir = d.isDirectory()
-          // Resolve a symlink's target type so it sorts/navigates correctly.
-          if (isSymlink) {
-            try {
-              isDir = statSync(full).isDirectory()
-            } catch {
-              isDir = false
-            }
-          }
-          return { name: d.name, path: full, isDir, isSymlink }
-        })
-        .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1))
-      const parent = dirname(abs)
-      return { path: abs, parent: parent === abs ? null : parent, entries }
+      // Filtering/sorting/symlink-target logic lives in the pure buildFsListing
+      // (unit-tested); only the disk reads stay here.
+      return buildFsListing(abs, dirents, (full) => {
+        try {
+          return statSync(full).isDirectory()
+        } catch {
+          return false
+        }
+      })
     } catch (err) {
       return {
         path: dirPath,
