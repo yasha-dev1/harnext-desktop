@@ -34,14 +34,14 @@ jobs:
       # `file:../harnext/packages/core` dependency resolves: check both out under
       # the workspace as `harnext-desktop/` and `harnext/`.
       - name: Checkout harnext-desktop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: harnext-desktop
 
       # The real @harnext/core — the CI lint/test stub (see ci.yml / #16) is not
       # enough for a release build, which imports the actual package.
       - name: Checkout @harnext/core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: QualityUnit/harnext
           path: harnext

@@ -24,7 +24,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -92,12 +92,12 @@ jobs:
       # Check both repos out as siblings so the package.json's
       # `file:../harnext/packages/core` dependency resolves.
       - name: Checkout harnext-desktop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: harnext-desktop
 
       - name: Checkout @harnext/core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: QualityUnit/harnext
           path: harnext
