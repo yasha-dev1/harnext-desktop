@@ -111,7 +111,7 @@ jobs:
       # Each runner's installers (plus the auto-update *.yml / *.blockmap metadata)
       # land in harnext-desktop/dist. Hand them to the publish job as an artifact.
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.os }}
           if-no-files-found: error
