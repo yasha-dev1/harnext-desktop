@@ -6,13 +6,8 @@ import { buildCadence, DAY_SHORT } from '@shared/schedule'
 import { useAppStore } from '../stores/useAppStore'
 import { shortModel } from '../lib/ui'
 import { buildProviderOptions } from '../lib/provider-options'
+import { initialInterval, intervalToMinutes } from '../lib/loop-interval'
 import { Icon } from '../components/icons'
-
-// Initial interval amount + unit, derived from a stored config (honours legacy hours).
-function initialInterval(c: LoopConfig | undefined): { amt: number; unit: 'minutes' | 'hours' } {
-  const mins = c?.intervalMinutes ?? (c?.intervalHours != null ? c.intervalHours * 60 : 360)
-  return mins % 60 === 0 ? { amt: mins / 60, unit: 'hours' } : { amt: mins, unit: 'minutes' }
-}
 
 export default function NewLoopForm(): JSX.Element {
   const { projectId: projectIdParam, loopId: loopIdParam } = useParams()
@@ -53,7 +48,7 @@ export default function NewLoopForm(): JSX.Element {
   const set = (patch: Partial<LoopConfig>): void => setConfig((c) => ({ ...c, ...patch }))
 
   // Interval amount + unit are the source of truth; fold them into the config.
-  const intervalMins = Math.max(1, intervalUnit === 'hours' ? intervalAmt * 60 : intervalAmt)
+  const intervalMins = intervalToMinutes(intervalAmt, intervalUnit)
   const days = config.days ?? [0]
   const toggleDay = (d: number): void => {
     const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b)
