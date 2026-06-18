@@ -7,12 +7,14 @@ import {
   getProviderConfig,
   getStoredKey,
   parseGoalVerdict,
+  PROVIDERS,
   setProviderEnv,
   type AgentMessage,
   type AgentSession,
   type AgentSessionEventListener,
   type CommandExecutor
 } from '@harnext/core'
+import { parseModelRef } from '../../shared/model-ref'
 import type {
   AgentMeta,
   AgentPush,
@@ -81,6 +83,29 @@ export function ensureProviderEnv(providerId: string): void {
   throw new Error(
     `No API key for ${info.name}. Add one in Settings → Providers, or set ${info.envVar}.`
   )
+}
+
+// Provider ids harnext knows about — the gate that distinguishes a cross-provider
+// ref (`openrouter:deepseek/…`) from a legacy bare model id that happens to contain
+// a colon (ollama's `llama3:8b`). See parseModelRef (#103).
+const KNOWN_PROVIDER_IDS = PROVIDERS.map((p) => p.id)
+
+/**
+ * Resolve a stored model selection (a bare id or a `<provider>:<model>` ref) to the
+ * provider + model id its session should run on (#103). A bare id falls back to the
+ * agent's default provider; a qualified ref runs on its own provider — so goal mode's
+ * smart and executor can live on different providers. Also primes that provider's env.
+ */
+function resolveSessionModel(
+  value: string,
+  defaultProvider: string
+): { provider: string; modelId: string } {
+  const { provider, modelId } = parseModelRef(value, {
+    providers: KNOWN_PROVIDER_IDS,
+    fallback: defaultProvider
+  })
+  ensureProviderEnv(provider)
+  return { provider, modelId }
 }
 
 const TEXT_FLUSH_MS = 50
@@ -368,7 +393,14 @@ export class AgentManager {
     const repoCwd = db.projectCwd(project)
     // One cheap-model call names the conversation: a concise title + branch name
     // from the first prompt (#114). Best-effort — falls back to the prompt slug.
-    const prep = await generatePrepDetails(provider, model, repoCwd, cleanPrompt)
+    // Resolve the default model's own provider (#103) so prep runs on the right one.
+    const prepModel = resolveSessionModel(model, provider)
+    const prep = await generatePrepDetails(
+      prepModel.provider,
+      prepModel.modelId,
+      repoCwd,
+      cleanPrompt
+    )
     const title = prep?.title || fallbackTitle
 
     // Isolated worktree for git projects — the user's checkout is never touched.
@@ -921,10 +953,14 @@ export class AgentManager {
       initialMessages?: AgentMessage[]
     }
   ): Promise<AgentSession> {
+    // Each model carries its own provider (#103): a `<provider>:<model>` ref runs on
+    // that provider, a bare id on the agent's default — so goal-mode smart/executor
+    // can be on different providers. All session creation funnels through here.
+    const { provider, modelId } = resolveSessionModel(opts.modelId, agent.provider)
     const { session } = await createAgentSession({
       cwd: agent.cwd,
-      provider: agent.provider,
-      modelId: opts.modelId,
+      provider,
+      modelId,
       thinkingLevel: agent.thinkingLevel,
       permissionMode: opts.permissionMode,
       disallowedTools: opts.disallowedTools,
