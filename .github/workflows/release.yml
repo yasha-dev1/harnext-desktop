@@ -59,7 +59,12 @@ jobs:
         # which can't parse the POSIX shell syntax these steps use.
         shell: bash
         run: |
-          npm ci
+          # onnxruntime-node (a @harnext/core dep) downloads a prebuilt binary from
+          # a CDN during install and intermittently fails with ECONNRESET. Retry so
+          # a transient network blip doesn't sink the release — the publish job
+          # needs every platform's build to succeed.
+          retry() { local a; for a in 1 2 3; do "$@" && return 0; echo "::warning::'$*' failed (attempt $a/3), retrying in 20s"; sleep 20; done; echo "::error::'$*' failed after 3 attempts"; return 1; }
+          retry npm ci
           npm -w packages/core run build
 
       # `npm install` runs the postinstall (`electron-builder install-app-deps`),
@@ -75,9 +80,10 @@ jobs:
         working-directory: harnext-desktop
         shell: bash # `TARBALL=$(...)` is POSIX syntax; PowerShell on windows-latest rejects it.
         run: |
-          npm install --no-audit --no-fund
+          retry() { local a; for a in 1 2 3; do "$@" && return 0; echo "::warning::'$*' failed (attempt $a/3), retrying in 20s"; sleep 20; done; echo "::error::'$*' failed after 3 attempts"; return 1; }
+          retry npm install --no-audit --no-fund
           TARBALL=$(cd ../harnext/packages/core && npm pack --silent | tail -1)
-          npm install "../harnext/packages/core/$TARBALL" --no-audit --no-fund
+          retry npm install "../harnext/packages/core/$TARBALL" --no-audit --no-fund
 
       - name: Build installers (no publish)
         working-directory: harnext-desktop
